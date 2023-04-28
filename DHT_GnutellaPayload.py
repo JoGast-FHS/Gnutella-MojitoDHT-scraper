@@ -1,4 +1,4 @@
-import DHT_utilities
+import _utilities_
 
 
 class GnutellaPayload:
@@ -50,15 +50,15 @@ class GnutellaPayload:
                     if arg == 'ipVer' and payloadbytes[curr_digit:(curr_digit + contactArguments['ipVer']*2)] != "04":  # !! 0d16 -> 0x10 !!   IPv4 oder IPv6 - Anpassung d. Adresslängen (Flag setzen, weil Länge des nächsten Arguments geändert werden muss, nicht das derzeitige)
                         v6flag = True
                     if arg == 'ipAddr' and v6flag:
-                        contactArguments['ipAddr'] = 10  # 0d16 (Bytes Länge d. Adresse) -> 0x10
+                        val = 10  # 0d16 (Bytes Länge d. Adresse) -> 0x10
                     next_digit = curr_digit + int(val)*2  # Hack von oben (*2 wg. Byte->Digits)
                     contactArguments[arg] = payloadbytes[curr_digit:next_digit]  # Überschreiben.. Länge->Value
                     curr_digit = next_digit
                     if arg == 'ipAddr':
                         if v6flag:
-                            self.ipv6_addresses.append(DHT_utilities.hex2ip(contactArguments['ipAddr'], 6))
+                            self.ipv6_addresses.append(_utilities_.hex2ip(contactArguments['ipAddr'], 6))
                         else:
-                            self.ipv4_addresses.append(DHT_utilities.hex2ip(contactArguments['ipAddr'], 4))
+                            self.ipv4_addresses.append(_utilities_.hex2ip(contactArguments['ipAddr'], 4))
                     elif arg == 'ipPort':
                         if v6flag:
                             self.ipv6_ports.append(int(contactArguments['ipPort'], 16))

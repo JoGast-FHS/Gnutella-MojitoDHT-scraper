@@ -7,7 +7,8 @@ from queue import Queue
 import DHT_GnutellaHeader
 import DHT_GnutellaMessage
 import _utilities_
-import config
+import _config
+import _targets
 
 
 
@@ -45,15 +46,15 @@ def get_static_header_blueprint():  # Gerüst ohne dynamische properties wie opc
 
 
 def get_headerConstants():
-    localIP = _utilities_.get_local_ip(config.dht_sending_ipVer)  # Unschön.. aber sonst muss bei jeder Iteration neu IP rausgefunden werden, inkl. Verbindungsaufbau... auch nicht gut
-    publicIP = _utilities_.get_public_ip(config.dht_ip_version)
+    localIP = _utilities_.get_local_ip(_config.dht_sending_ipVer)  # Unschön.. aber sonst muss bei jeder Iteration neu IP rausgefunden werden, inkl. Verbindungsaufbau... auch nicht gut
+    publicIP = _utilities_.get_public_ip(_config.dht_ip_version)
     kuid = str(secrets.token_hex(20))  # zufällig generierte KUID (160bit laut doku) (lokale KUID)
 
     staticHeaderValues = {
         #statisch für gesamte Laufzeit
-        'sending_ip_ver': config.dht_sending_ipVer,
+        'sending_ip_ver': _config.dht_sending_ipVer,
         'kuid': kuid,
-        'ip_ver': config.dht_ip_version,
+        'ip_ver': _config.dht_ip_version,
         'local_ip': localIP,
         'public_ip': publicIP,
     }
@@ -66,7 +67,7 @@ def findNode_Requests(staticHeaderValues, target, numRequests):
     else:
         addrFamily = socket.AF_INET6
     sock = socket.socket(addrFamily, socket.SOCK_DGRAM)
-    sock.settimeout(config.dht_socket_timeout)  # Socket schließt nach 20s
+    sock.settimeout(_config.dht_socket_timeout)  # Socket schließt nach 20s
     sock.bind((staticHeaderValues['local_ip'], 0))
 
     payload_len = payload_len = f'{hex(58)[2:]}000000'  # Standard für FIND NODE REQUEST: 58 dec, 3a 00 00 00 (big endian)
@@ -96,10 +97,12 @@ def findNode_Requests(staticHeaderValues, target, numRequests):
     for i in range(numRequests):
         target_kuid = secrets.token_hex(20)  # neue KUID zufällig generieren
         mojito_msg = bytearray.fromhex(gnutella_header.to_hexstr() + target_kuid)
-        print(target)
         sock.sendto(mojito_msg, target)
+    #print(f"{target} x{numRequests}")  # verbose
 
     recvAddrv4_list, recvAddrv6_list = recvReply(sock)
+    if len(recvAddrv6_list) > 0:  # verbose
+        print(f"Recv IPv6: {recvAddrv6_list}")
     sock.close()
 
     return recvAddrv4_list, recvAddrv6_list
@@ -119,30 +122,28 @@ def recvReply(sock):
                 return [], []
             #print(message)
     except socket.timeout:
-        print("socket timeout")
+        print("socket timeout")  # verbose
     return ipv4_addrList, ipv6_addrList
 
 
 def initAddrQueue(staticHeaderValues, ip_ver):
-    if config.dht_sending_ipVer == 4:
-        mojito_target_addresses = config.dht_target_addresses_ipv4
-        mojito_target_ports = config.dht_target_ports_ipv4
+    if _config.dht_sending_ipVer == 4:
+        mojito_targets = _targets.dht_targets_ipv4
     else:
-        mojito_target_addresses = config.dht_target_addresses_ipv6
-        mojito_target_ports = config.dht_target_ports_ipv6
+        mojito_targets = _targets.dht_targets_ipv6
 
-    queue = Queue(maxsize=config.dht_queue_size)
-    for i in range(len(mojito_target_addresses)):
-        recvAddrv4, recvAddrv6 = findNode_Requests(staticHeaderValues=staticHeaderValues, target=(mojito_target_addresses[i], mojito_target_ports[i]), numRequests=config.dht_number_of_requests_per_address)
+    queue = Queue(maxsize=_config.dht_queue_size)
+    for i in range(len(mojito_targets)):
+        recvAddrv4, recvAddrv6 = findNode_Requests(staticHeaderValues=staticHeaderValues, target=mojito_targets[i], numRequests=_config.dht_number_of_requests_per_address)
         if ip_ver == 4:
             for addrTuple in recvAddrv4:
-                if queue.qsize() < config.dht_queue_size:
+                if queue.qsize() < _config.dht_queue_size:
                     queue.put(addrTuple)
                 else:
                     break
         else:
             for addrTuple in recvAddrv6:
-                if queue.qsize() < config.dht_queue_size:
+                if queue.qsize() < _config.dht_queue_size:
                     queue.put(addrTuple)
                 else:
                     break
@@ -152,35 +153,46 @@ def initAddrQueue(staticHeaderValues, ip_ver):
 
 def crawlDHT(staticHeaderValues, run_event, addrQueue, writeQueue):
     while run_event.is_set():
+        fromQueue = False
         if addrQueue.empty():  # fallback to hardcoded addresses
-            if config.dht_sending_ipVer == 4:
-                addrNum = random.randint(0, (len(config.dht_target_addresses_ipv4)-1))  # choose random addr from hardcoded ipv4 addr
-                target_addr = (config.dht_target_addresses_ipv4[addrNum], config.dht_target_ports_ipv4[addrNum])
+            if _config.dht_sending_ipVer == 4:
+                addrNum = random.randint(0, (len(_targets.dht_targets_ipv4)-1))  # choose random addr from hardcoded ipv4 addr
+                target_addr = _targets.dht_targets_ipv4[addrNum]
+                print("Address queue empty - probably all IPv4 addresses scraped...")
             else:
-                addrNum = random.randint(0, (len(config.dht_target_addresses_ipv6)-1))  # choose random addr from hardcoded ipv6 addr
-                target_addr = (config.dht_target_addresses_ipv6[addrNum], config.dht_target_ports_ipv6[addrNum])
-            print("Address queue empty - probably no IPv6 addresses scraped...")
+                addrNum = random.randint(0, (len(_targets.dht_targets_ipv6)-1))  # choose random addr from hardcoded ipv6 addr
+                target_addr = _targets.dht_targets_ipv6[addrNum]
+                print("Address queue empty - probably no IPv6 addresses scraped...")
         else:
             target_addr = addrQueue.get()
-            addrQueue.task_done()
+            fromQueue = True
 
-        recvAddrv4, recvAddrv6 = findNode_Requests(staticHeaderValues=staticHeaderValues, target=target_addr, numRequests=config.dht_number_of_requests_per_address)
-        for addrTuple in recvAddrv4:
-            if config.dht_sending_ipVer == 4:
-                if addrQueue.qsize() < config.dht_queue_size:
-                    addrQueue.put(addrTuple)
-            if writeQueue.qsize() < config.dht_write_queue_size:
-                writeQueue.put(('ipv4', addrTuple[0]))
-            else:
-                print("Write Queue full! Omitting IPv4-Addresses!!!")
-        for addrTuple in recvAddrv6:
-            if config.dht_sending_ipVer == 6:
-                if addrQueue.qsize() < config.dht_queue_size:
-                    addrQueue.put(addrTuple)
-            if writeQueue.qsize() < config.dht_write_queue_size:
-                writeQueue.put(('ipv6', addrTuple[0]))
-            else:
-                print("Write Queue full! Omitting IPv6-Addresses!!!")
+        recvAddrv4, recvAddrv6 = findNode_Requests(staticHeaderValues=staticHeaderValues, target=target_addr, numRequests=_config.dht_number_of_requests_per_address)
+        writeQueue.join()  # wait until all addresses in the writeQueue are processed to avoid duplicate writes... Seems buggy though, so checking again in writeToFile()
+        with open(_config.dht_ipv4_file, 'r+') as f:
+            for addrTuple in recvAddrv4:
+                if addrTuple[0] in f.read():
+                    break
+                if _config.dht_sending_ipVer == 4:
+                    if addrQueue.qsize() < _config.dht_queue_size:
+                        addrQueue.put(addrTuple)
+                if writeQueue.qsize() < _config.dht_write_queue_size:
+                    writeQueue.put(('ipv4', addrTuple[0]))
+                else:
+                    print("Write Queue full! Omitting IPv4-Addresses!!!")
+        with open(_config.dht_ipv6_file, 'r+') as f:
+            for addrTuple in recvAddrv6:
+                if addrTuple[0] in f.read():
+                    break
+                if _config.dht_sending_ipVer == 6:
+                    if addrQueue.qsize() < _config.dht_queue_size:
+                        addrQueue.put(addrTuple)
+                if writeQueue.qsize() < _config.dht_write_queue_size:
+                    writeQueue.put(('ipv6', addrTuple[0]))
+                else:
+                    print("Write Queue full! Omitting IPv6-Addresses!!!")
+        if fromQueue:
+            addrQueue.task_done()
 
 
 def get_workerThreads(staticHeaderValues, run_event, num_threads, addrQueue, writeQueue):
@@ -188,31 +200,36 @@ def get_workerThreads(staticHeaderValues, run_event, num_threads, addrQueue, wri
     for i in range(num_threads):
         args = {'staticHeaderValues': staticHeaderValues, 'run_event': run_event, 'addrQueue': addrQueue, 'writeQueue': writeQueue}
         worker = Thread(target=crawlDHT, kwargs=args)
-        worker.setDaemon(True)
+        worker.daemon = True
         workers.append(worker)
     return workers
 
 
 def writeToFile(writeQueue, run_event, filenamev4, filenamev6):
+    f4 = open(filenamev4, 'a')  # make sure files are created
+    f4.close()
+    f6 = open(filenamev6, 'a')
+    f6.close()
+
     while run_event.is_set():
-        f4 = open(filenamev4, 'a')
-        f6 = open(filenamev6, 'a')
         while not writeQueue.empty():
             version, addr = writeQueue.get()
             if version == 'ipv4':
-                f4.write(addr + "\n")
+                with open(filenamev4, 'r+') as f:
+                    if addr not in f.read():
+                        f.write(addr + "\n")
             else:
-                f6.write(addr + "\n")
+                with open(filenamev6, 'r+') as f:
+                    if addr in f.read():
+                        f.write(addr + "\n")
             writeQueue.task_done()
-        f4.close()
-        f6.close()
         time.sleep(3)
 
 
 def get_writerThread(writeQueue, run_event):
-    args = {'writeQueue': writeQueue, 'run_event': run_event, 'filenamev4': config.dht_ipv4_file, 'filenamev6': config.dht_ipv6_file}
+    args = {'writeQueue': writeQueue, 'run_event': run_event, 'filenamev4': _config.dht_ipv4_file, 'filenamev6': _config.dht_ipv6_file}
     writer = Thread(target=writeToFile, kwargs=args)
-    writer.setDaemon(True)
+    writer.daemon = True
     return writer
 
 
@@ -222,7 +239,7 @@ def runThreads(workers, writer, run_event):
     writer.start()
 
     try:
-        while 1:
+        while True:
             time.sleep(.5)
     except KeyboardInterrupt:
         print("Stopping workers...")

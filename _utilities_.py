@@ -49,8 +49,10 @@ def ip2hex(ip_addr, ip_ver):
 
 
 def hex2ip(ip_addr, ip_ver):
+    addr_bytearray = bytearray.fromhex(ip_addr)
     if ip_ver == 4:
         addr_family = socket.AF_INET
     else:
         addr_family = socket.AF_INET6
-    return socket.inet_ntop(addr_family, bytearray.fromhex(ip_addr))
+        print(ip_addr)
+    return socket.inet_ntop(addr_family, addr_bytearray)

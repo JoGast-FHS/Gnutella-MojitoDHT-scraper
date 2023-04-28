@@ -1,26 +1,26 @@
 from threading import Event
 from queue import Queue
 import DHT_utilities
-import config
+import _config
 import socket
 import Gnutella_utilities
 import _utilities_
 
 
 if __name__ == "__main__":
-    if config.crawler == "gnutella":
+    if _config.crawler == "gnutella":
         sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM)
         sock.bind((_utilities_.get_local_ip(4), 12345))
         Gnutella_utilities.ping(sock, "78.192.163.71")
 
-    elif config.crawler == "mojito":
+    elif _config.crawler == "mojito":
         staticHeaderValues = DHT_utilities.get_headerConstants()
-        addressQueue = DHT_utilities.initAddrQueue(staticHeaderValues=staticHeaderValues, ip_ver=config.dht_sending_ipVer)
-        writeQueue = Queue(maxsize=config.dht_write_queue_size)
+        addressQueue = DHT_utilities.initAddrQueue(staticHeaderValues=staticHeaderValues, ip_ver=_config.dht_sending_ipVer)
+        writeQueue = Queue(maxsize=_config.dht_write_queue_size)
         run_event = Event()
         run_event.set()
 
-        workerThreads = DHT_utilities.get_workerThreads(staticHeaderValues=staticHeaderValues, run_event=run_event, num_threads=config.dht_num_worker_threads, addrQueue=addressQueue, writeQueue=writeQueue)
+        workerThreads = DHT_utilities.get_workerThreads(staticHeaderValues=staticHeaderValues, run_event=run_event, num_threads=_config.dht_num_worker_threads, addrQueue=addressQueue, writeQueue=writeQueue)
         writerThread = DHT_utilities.get_writerThread(writeQueue=writeQueue, run_event=run_event)
         DHT_utilities.runThreads(workerThreads, writerThread, run_event)
 
@@ -40,7 +40,7 @@ if __name__ == "__main__":
         # 3) keyboard interrupt
 
     else:
-        print("Unrecognized crawler type")
+        print("Unrecognized crawler type, available are <gnutella> and <mojito> (DHT)")
 
 
 
