@@ -8,9 +8,12 @@ import socket
 
 
 def get_public_ip(ip_ver):
-    response = requests.get(f"https://api{ip_ver}.ipify.org?format=json")  # ipv4 addr or ipv6 addr
-    json_response = json.loads(response.text)
-    publicIP = json_response['ip']
+    try:
+        response = requests.get(f"https://api{ip_ver}.ipify.org?format=json")  # ipv4 addr or ipv6 addr
+        json_response = json.loads(response.text)
+        publicIP = json_response['ip']
+    except requests.exceptions:
+        print("Time out getting public IP-Address. Possibly running in IPv6 mode with no IPv6 connection.")
     return publicIP
 
 
