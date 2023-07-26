@@ -1,5 +1,5 @@
-import DHT_GnutellaHeader
-import DHT_GnutellaPayload
+from src.MojitoDHT import DHT_GnutellaHeader
+from src.MojitoDHT import DHT_GnutellaPayload
 
 
 class GnutellaMessage:

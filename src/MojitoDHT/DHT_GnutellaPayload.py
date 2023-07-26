@@ -1,4 +1,4 @@
-import _utilities_
+from src._general_ import _utilities_
 
 
 class GnutellaPayload:

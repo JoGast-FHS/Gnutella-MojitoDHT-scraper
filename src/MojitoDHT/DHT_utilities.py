@@ -5,12 +5,10 @@ import socket
 import time
 from threading import Thread
 from queue import Queue
-import DHT_GnutellaHeader
-import DHT_GnutellaMessage
-import _utilities_
-import _config
-import _targets
-
+from src.MojitoDHT import DHT_GnutellaHeader
+from src.MojitoDHT import DHT_GnutellaMessage
+from src._general_ import _utilities_
+from config import _config, _targets
 
 
 def get_static_header_blueprint():  # Gerüst ohne dynamische properties wie opcode, lokale KUID etc... Außerdem erst dictionary, was dann zum GnutellaHeader instanziieren genutzt wird
@@ -99,7 +97,7 @@ def findNode_Requests(staticHeaderValues, target, numRequests):
         target_kuid = secrets.token_hex(20)  # neue KUID zufällig generieren
         mojito_msg = bytearray.fromhex(gnutella_header.to_hexstr() + target_kuid)
         sock.sendto(mojito_msg, target)
-    #print(f"{target} x{numRequests}")  # verbose
+    print(f"{target}x{numRequests}")  # verbose
 
     recvAddrv4_list, recvAddrv6_list = recvReply(sock)
     if len(recvAddrv6_list) > 0:  # verbose
@@ -177,11 +175,11 @@ def crawlDHT(staticHeaderValues, run_event, addrQueue, writeQueue):
         fromQueue = False
         if addrQueue.empty():  # fallback to hardcoded addresses
             if _config.dht_sending_ipVer == 4:
-                addrNum = random.randint(0, (len(_targets.dht_targets_ipv4)-1))  # choose random addr from hardcoded ipv4 addr
+                addrNum = random.randint(0, (len(_targets.dht_targets_ipv4) - 1))  # choose random addr from hardcoded ipv4 addr
                 target_addr = _targets.dht_targets_ipv4[addrNum]
                 print("Address queue empty - probably all IPv4 addresses scraped...")
             else:
-                addrNum = random.randint(0, (len(_targets.dht_targets_ipv6)-1))  # choose random addr from hardcoded ipv6 addr
+                addrNum = random.randint(0, (len(_targets.dht_targets_ipv6) - 1))  # choose random addr from hardcoded ipv6 addr
                 target_addr = _targets.dht_targets_ipv6[addrNum]
                 print("Address queue empty - probably no IPv6 addresses scraped or wrong configuration...")
         else:
@@ -208,10 +206,10 @@ def crawlDHT(staticHeaderValues, run_event, addrQueue, writeQueue):
                 if _config.dht_sending_ipVer == 6:
                     if addrQueue.qsize() < _config.dht_queue_size:
                         addrQueue.put(addrTuple)
-                        print("Put in addrQueue")  # verbose
+                        #print("Put in addrQueue")  # verbose
                 if writeQueue.qsize() < _config.dht_write_queue_size:
                     writeQueue.put(('ipv6', addrTuple[0]))
-                    print("Put in writeQueue")  # verbose
+                    #print("Put in writeQueue")  # verbose
                 else:
                     print("Write Queue full! Omitting IPv6-Addresses!!!")
         if fromQueue:

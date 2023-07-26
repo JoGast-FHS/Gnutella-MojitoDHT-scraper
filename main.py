@@ -1,17 +1,26 @@
+import zlib
 from threading import Event
 from queue import Queue
-import DHT_utilities
-import _config
-import socket
-import Gnutella_utilities
-import _utilities_
-
+from src.MojitoDHT import DHT_utilities
+from config import _config
+from src.Gnutella import Gnutella_utilities
 
 if __name__ == "__main__":
+
+
+
+
+    # text = "Test123"
+    # #compress
+    # deflate_compress = zlib.compressobj(9, zlib.DEFLATED, -zlib.MAX_WBITS)
+    # deflate_data = deflate_compress.compress(text.encode()) + deflate_compress.flush()
+    # print(deflate_data)
+    # #decompress
+    # data = zlib.decompress(deflate_data, -zlib.MAX_WBITS)
+    # print(data)
+
     if _config.crawler == "gnutella":
-        sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM)
-        sock.bind((_utilities_.get_local_ip(4), 12345))
-        Gnutella_utilities.ping(sock, "78.192.163.71")
+        Gnutella_utilities.initGnutella()
 
     elif _config.crawler == "mojito":
         staticHeaderValues = DHT_utilities.get_headerConstants()
@@ -35,9 +44,22 @@ if __name__ == "__main__":
         #   2e) worker checks if there is space in queue
         #       ---- 2e_1) if there is space, add as many ipv6 addr to queue as possible ---- (prob not possible to talk to them properly... mojito ipv6 header problem...)
         #       2e_2) add only ipv4 addresses to queue, until all contacts added or list is full
-        #       2e_3) add maybe 5 ipv4 addressses to queue to get bit more variety, else we end up in one spot on dht
+        #       2e_3) add maybe 5 ipv4 addresses to queue to get bit more variety, else we end up in one spot on dht
         #   2f) worker returns to initial state (->2a)
         # 3) keyboard interrupt
+
+    elif _config.crawler == "testmode":
+        d = "78da0a71f4f1f3f460f37354fdfd3ce4948487807ba875ecb488fc035a0e53623f896fadf6fcefc01216e418e5e8c1e113cc00051e0c6ee11e2c1e40be0ea30743a037000000ffff"
+        x = hex(int(d, 16))
+        y = x[2:]
+        data = bytearray.fromhex(y)
+
+        deflate_compress = zlib.compressobj(9, zlib.DEFLATED, -zlib.MAX_WBITS)
+        deflate_data = deflate_compress.compress(data) + deflate_compress.flush()
+        data_decompressed = zlib.decompress(deflate_data, -zlib.MAX_WBITS)
+        print(data_decompressed)
+        print(data_decompressed.decode())
+        print(str(data_decompressed.decode()))
 
     else:
         print("Unrecognized crawler type, available are <gnutella> and <mojito> (DHT)")

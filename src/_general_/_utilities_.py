@@ -59,3 +59,7 @@ def hex2ip(ip_addr, ip_ver):
         addr_family = socket.AF_INET6
         print(ip_addr)
     return socket.inet_ntop(addr_family, addr_bytearray)
+
+
+def replaceStr(str, index, newStr):
+    return str[:index] + newStr + str[index + len(newStr):]
