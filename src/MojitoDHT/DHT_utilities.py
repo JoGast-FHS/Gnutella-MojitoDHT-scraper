@@ -177,7 +177,7 @@ def crawlDHT(staticHeaderValues, run_event, addrQueue, writeQueue):
             if _config.dht_sending_ipVer == 4:
                 addrNum = random.randint(0, (len(_targets.dht_targets_ipv4) - 1))  # choose random addr from hardcoded ipv4 addr
                 target_addr = _targets.dht_targets_ipv4[addrNum]
-                print("Address queue empty - probably all IPv4 addresses scraped...")
+                print("Address queue empty - probably all IPv4 addresses in DHT scraped or using unreachable seed nodes (-> seed manually)...")
             else:
                 addrNum = random.randint(0, (len(_targets.dht_targets_ipv6) - 1))  # choose random addr from hardcoded ipv6 addr
                 target_addr = _targets.dht_targets_ipv6[addrNum]

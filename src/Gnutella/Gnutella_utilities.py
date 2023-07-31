@@ -11,37 +11,52 @@ from config import _targets
 
 
 
-def do_handshake(sock, target):
+def do_handshake(sock, target, crawlerHeader=False, ip6Header=False):
     local_ip = _utilities_.get_public_ip(_config.gnutella_sending_ipVer)
     local_port = sock.getsockname()[1]
     foundIPs = []
 
-    messageString = Gnutella_ConnectMessage.ConnectMessage.handshakePacket(target[0]).toString()
+    if crawlerHeader:
+        messageString = Gnutella_ConnectMessage.ConnectMessage.handshakePacket_crawler().toString()
+    else:
+        messageString = Gnutella_ConnectMessage.ConnectMessage.handshakePacket(target[0]).toString()
+    if ip6Header:
+        messageString += "x-Features: IP/6.4\r\n"
+    messageString += "\r\n"
     sock.sendall(messageString.encode())
     responseString = sock.recv(1024).decode()
     gnutellaResponse = Gnutella_ConnectMessage.ConnectMessage(responseString)
-    if gnutellaResponse.statusCode == 200:
-        print("200 - OK... sending ACK\n")
-        gnutellaAck = Gnutella_ConnectMessage.ConnectMessage.ackPacket().toString()
-        sock.sendall(gnutellaAck.encode())
-        return (0, [])
-    elif gnutellaResponse.statusCode == 503:
-        if 'X-Try' in gnutellaResponse.headers:
-            tryIPs = gnutellaResponse.headers['X-Try'].split(',')
-            for ip in tryIPs:
-                ipTuple = ip.split(':')
-                foundIPs.append(ipTuple[0], ipTuple[1])
-            print(f"503 - Got IPs: {foundIPs}\n")
-        elif 'X-Try-Hubs' in gnutellaResponse.headers:
-            tryIPs = gnutellaResponse.headers['X-Try-Hubs'].split(',')
-            for ip in tryIPs:
-                ipTuple = ip.split(':')
-                foundIPs.append((ipTuple[0], ipTuple[1].split(' ')[0]))
-            print(f"503 - Got Hub-IPs: {foundIPs}\n")
-        return (1, foundIPs)
-    else:
-        print(f"Unknown banner: < {gnutellaResponse.banner} >\n")
-        return (2, [])
+    if crawlerHeader: # crawler handshake
+        if gnutellaResponse.statusCode == 200:
+            print("200 - OK... Waiting for crawler response\n")
+            return (0, [])
+        else:
+            print(f"Returned status code: {gnutellaResponse.statusCode} -- {gnutellaResponse.banner}\n")
+            return (2, [])
+    else: # normal handshake for Ping message etc.
+        if gnutellaResponse.statusCode == 200:
+            print("200 - OK... sending ACK\n")
+            gnutellaAck = Gnutella_ConnectMessage.ConnectMessage.ackPacket().toString()
+            sock.sendall(gnutellaAck.encode())
+            return (0, [])
+        elif gnutellaResponse.statusCode == 503:
+            if 'X-Try' in gnutellaResponse.headers:
+                tryIPs = gnutellaResponse.headers['X-Try'].split(',')
+                for ip in tryIPs:
+                    ipTuple = ip.split(':')
+                    foundIPs.append(ipTuple[0], ipTuple[1])
+                print(f"503 - Got IPs: {foundIPs}\n")
+            elif 'X-Try-Hubs' in gnutellaResponse.headers:
+                tryIPs = gnutellaResponse.headers['X-Try-Hubs'].split(',')
+                for ip in tryIPs:
+                    ipTuple = ip.split(':')
+                    foundIPs.append((ipTuple[0], ipTuple[1].split(' ')[0]))
+                print(f"503 - Got Hub-IPs: {foundIPs}\n")
+            return (1, foundIPs)
+        else:
+            print(f"Unknown banner: < {gnutellaResponse.banner} >\n")
+            return (2, [])
+
 
 
 #@timeout(_config.gnutella_socket_timeout - 2)
@@ -49,17 +64,19 @@ def timedRecv(sock, buf):
     return sock.recv(buf)
 
 
-def ping(sock, target):
+def ping(sock, target, crawlerHeader=False, ip6Header=False):
     ret = (-1, [])
     try:
         sock.connect(target)
         timedRecv_f = timeout(_config.gnutella_socket_timeout - 3)(timedRecv)
-        handshakeResp = do_handshake(sock, target)
+        handshakeResp = do_handshake(sock, target, crawlerHeader, ip6Header)
         ret = handshakeResp
         if handshakeResp[0] == 0:
             try:
                 while True:
                     peerResp = timedRecv_f(sock, 1024)
+                    if crawlerHeader:
+                        print(peerResp.decode())
                     #print(f"Peerdata: {peerResp.decode()}\n")  # verbose
             except UserWarning:
                 print("recv timeout\n")  # verbose
@@ -79,7 +96,7 @@ def ping(sock, target):
     return ret
 
 
-def gnutellaPings(targets):
+def gnutellaPings(targets, crawlerHeader=False, ip6Header=False):
     if _config.gnutella_sending_ipVer == 4:
         family = socket.AF_INET
     else:
@@ -91,7 +108,7 @@ def gnutellaPings(targets):
         sock.bind((_utilities_.get_local_ip(_config.gnutella_sending_ipVer), 0))
         sock.settimeout(_config.gnutella_socket_timeout)
         print(f"{sock.getsockname()[0]}:{sock.getsockname()[1]} --> {target[0]}:{target[1]}")  # verbose
-        retCode, ips = ping(sock, target)
+        retCode, ips = ping(sock, target, crawlerHeader, ip6Header)
         if retCode == 1:
             for ip in ips:
                 foundIPs.append((ip[0], int(ip[1])))
@@ -100,16 +117,16 @@ def gnutellaPings(targets):
     return foundIPs
 
 
-def gnutellaInitPings():
+def gnutellaInitPings(crawlerHeader=False, ip6Header=False):
     if _config.gnutella_sending_ipVer == 4:
-        return gnutellaPings(_targets.gnutella_targets_ipv4)
+        return gnutellaPings(_targets.gnutella_targets_ipv4, crawlerHeader, ip6Header)
     else:
-        return gnutellaPings(_targets.gnutella_targets_ipv6)
+        return gnutellaPings(_targets.gnutella_targets_ipv6, crawlerHeader, ip6Header)
 
 
-def initGnutella():
+def initGnutella(crawlerHeader=False, ip6Header=False):
     pingQueue = Queue(maxsize=10000)
-    foundIPs = gnutellaInitPings()
+    foundIPs = gnutellaInitPings(crawlerHeader, ip6Header)
     for ip in foundIPs:
         pingQueue.put(ip)
         print(f"{ip} put in Queue.")

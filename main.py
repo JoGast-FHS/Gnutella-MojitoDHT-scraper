@@ -20,7 +20,7 @@ if __name__ == "__main__":
     # print(data)
 
     if _config.crawler == "gnutella":
-        Gnutella_utilities.initGnutella()
+        Gnutella_utilities.initGnutella(_config.gnutella_crawlerHeader, _config.gnutella_ip6Header)
 
     elif _config.crawler == "mojito":
         staticHeaderValues = DHT_utilities.get_headerConstants()

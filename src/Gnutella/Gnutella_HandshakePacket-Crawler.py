@@ -1,4 +1,4 @@
-
+#Crawler Handshake-Paket nach https://web.archive.org/web/20080624014943/http://wiki.limewire.org/index.php?title=Communicating_Network_Topology_Information
 
 
 class HandshakePacket:
@@ -9,11 +9,9 @@ class HandshakePacket:
         self.handshake_str = \
             "GNUTELLA CONNECT/0.6\r\n" \
             "User-Agent: TEST 0.0.0.1 \r\n" \
-            "Accept: application/x-gnutella2\r\n" \
             "X-Ultrapeer: False\r\n" \
-            "X-Ultrapeer-Needed: True\r\n" \
-            f"Remote-IP: {target_ip}\r\n" \
-            "Accept-Encoding: deflate\r\n"
+            "Query-Routing: 0.1\r\n" \
+            "Crawler: 0.1\r\n"
         # note: MUSS MIT \r\n\r\n terminiert werden, sonst ungültiges Handshake-Paket
         # termination string oder ipv6 header vor t.string wird in do_handshake() eingefügt
 
