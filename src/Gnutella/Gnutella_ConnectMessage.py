@@ -4,14 +4,17 @@
 
 class ConnectMessage:
     @classmethod
-    def handshakePacket(cls, target_ip):
+    def handshakePacket(cls, remote_ip, listen_ip, listen_port):
         headers = {}
         banner = "GNUTELLA CONNECT/0.6"
         headers['User-Agent'] = "TEST 0.0.0.1"
-        headers['Accept'] = "application/x-gnutella2"
+        headers['Accept'] = "application/x-gnutella-packets"
         headers['X-Ultrapeer'] = "False"
         headers['X-Ultrapeer-Needed'] = "True"
-        headers['Remote-IP'] = target_ip
+        headers['Listen-IP'] = listen_ip + ":" + str(listen_port)
+        headers['Remote-IP'] = remote_ip
+        headers['Accept-Encoding'] = "deflate"
+        #headers['GGEP'] = "0.5"
         #headers['Accept-Encoding'] = "deflate"
         return cls(ConnectMessage.fromArgs(banner, headers).toString())
 
@@ -20,8 +23,8 @@ class ConnectMessage:
         headers = {}
         banner = "GNUTELLA CONNECT/0.6"
         headers['User-Agent'] = "TEST 0.0.0.1"
-        headers['X-Ultrapeer'] = "False"
-        headers['Query-Routing'] = "0.1"
+        #headers['Accept'] = "application/x-gnutella-packets"
+        #headers['GGEP'] = "0.5"
         headers['Crawler'] = "0.1"
         return cls(ConnectMessage.fromArgs(banner, headers).toString())
 
@@ -29,8 +32,10 @@ class ConnectMessage:
     def ackPacket(cls):
         headers = {}
         banner = "GNUTELLA/0.6 200 OK"
-        headers['Accept'] = "application/x-gnutella2"
-        headers['Content-Type'] = "application/x-gnutella2"
+        headers['Accept'] = "application/x-gnutella-packets"
+        headers['Content-Type'] = "application/x-gnutella-packets"
+        headers['Accept-Encoding'] = "deflate"
+        headers['Content-Encoding'] = "deflate"
         return cls(ConnectMessage.fromArgs(banner, headers).toString())
 
     def toString(self):
@@ -53,21 +58,27 @@ class ConnectMessage:
     def __init__(self, messagestring):
         self.headers = {}
         toSplit = messagestring
-        while toSplit[-2:] == "\r\n":
-            toSplit = toSplit[:-2] # [:-n] to remove CRLF at end of message - !! \r and \n count as 1 char each !!
-        splitMsg = toSplit.split('\r\n')
-        for i, headerArg in enumerate(splitMsg):
-            if i == 0:
-                self.banner = headerArg
-                if self.banner != "GNUTELLA CONNECT/0.6":
-                    self.splitBanner = self.banner.partition(' ')  # .partition() instead of .split() because it keeps second ' ' between status code and -descriptor (e.g. '200 OK')
-                    self.statusCode_full = self.splitBanner[2]  # self.banner[1] is separator itself, so ' ' here
-                    self.statusCode = int(self.statusCode_full.split(' ')[0], 10)
-                continue
-            elif i == 1 and headerArg == '':    # some servents seem to send empty line between header and body
-                continue
+        try:
+            while toSplit[-2:] == "\r\n":
+                toSplit = toSplit[:-2] # [:-n] to remove CRLF at end of message - !! \r and \n count as 1 char each !!
+            splitMsg = toSplit.split('\r\n')
+            for i, headerArg in enumerate(splitMsg):
+                if i == 0:
+                    self.banner = headerArg
+                    if self.banner != "GNUTELLA CONNECT/0.6":
+                        self.splitBanner = self.banner.partition(' ')  # .partition() instead of .split() because it keeps second ' ' between status code and -descriptor (e.g. '200 OK')
+                        self.statusCode_full = self.splitBanner[2]  # self.banner[1] is separator itself, so ' ' here
+                        self.statusCode = int(self.statusCode_full.split(' ')[0], 10)
+                    continue
+                elif i == 1 and headerArg == '':    # some servents seem to send empty line between header and body
+                    continue
 
-            headerTuple = headerArg.split(': ')
-            headerName = headerTuple[0]
-            headerVal = headerTuple[1]
-            self.headers[headerName] = headerVal
+                try:
+                    headerTuple = headerArg.split(': ')
+                    headerName = headerTuple[0]
+                    headerVal = headerTuple[1].replace('\r\n', '')  # remove CRLF at beginning of header value, if present (sometimes the case with 'Peers' header, for example)
+                    self.headers[headerName] = headerVal
+                except Exception:
+                    continue
+        except Exception as e:
+            print("Error while creating ConnectMessage: " + str(e))

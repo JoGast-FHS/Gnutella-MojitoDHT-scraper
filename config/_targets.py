@@ -2,7 +2,8 @@
 #-----------------------------------------------------------------------------------
 # Values gathered empirically and might not work anymore in the future!
 # In that case, substitute with addr/port tuples taken from e.g. widely
-# used servents' traffic, since they implement more sophisticated bootstrapping.
+# used servents' traffic, since they implement more sophisticated bootstrapping
+# via WebCaches.
 
 # Mojito DHT
 dht_targets_ipv4 = [("188.136.234.186", 44858),
@@ -21,16 +22,16 @@ dht_targets_ipv6 = [("2a02:2168:b01:5d2d::2", 50842),
 
 
 # Gnutella
-gnutella_targets_ipv4 = [("202.27.193.6", 6346),  #gnutella2
-                         ("88.164.223.61", 6346),
-                         ("172.111.233.123", 51500),
-                         ("104.28.243.200", 6346),
-                         ("65.31.202.72", 6346),
-                         ("67.170.110.210", 6346),
+gnutella_targets_ipv4 = [("96.51.133.217", 6346),  #gnutella2
+                         ("93.15.39.86", 6346),
+                         ('90.154.70.56', 50842),   #G2 leaves
+                         ('79.184.215.211', 48157),
+                         ('159.196.95.223', 2003),
+                         ('45.88.118.70', 6906),
 
-                         ("86.157.248.213", 6346),  #gnutella1
-                         ("52.212.171.135", 6346),
-                         ("82.15.220.175", 6346)]
+                         ("94.54.67.10", 63460),  #gnutella1
+                         ("104.238.172.250", 65131),
+                         ("174.45.208.219", 10292)]
 
 
 gnutella_targets_ipv6 = [("2a02:2168:b01:5d2d::2", 50842),

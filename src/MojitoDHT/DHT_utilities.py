@@ -1,10 +1,7 @@
-import os
 import random
 import secrets
 import socket
-import time
-from threading import Thread
-from queue import Queue
+
 from src.MojitoDHT import DHT_GnutellaHeader
 from src.MojitoDHT import DHT_GnutellaMessage
 from src._general_ import _utilities_
@@ -60,6 +57,25 @@ def get_headerConstants():
     return staticHeaderValues
 
 
+def recvReply(sock):
+    ipv4_addrList = []
+    ipv6_addrList = []
+    try:
+        while True:
+            data, sender_ip = sock.recvfrom(1024)  # buffer size is 1024 bytes
+            message = DHT_GnutellaMessage.GnutellaMessage(data.hex())
+            try:
+                ipv4_addrList.extend(zip(message.ipv4_addresses_found, message.ipv4_ports_found))  # creating tuples
+                ipv6_addrList.extend(zip(message.ipv6_addresses_found, message.ipv6_ports_found))
+            except Exception:
+                return [], []
+            #print(message)
+    except socket.timeout:
+        #print("socket timeout")  # verbose
+        print("Peer scanned.")
+    return ipv4_addrList, ipv6_addrList
+
+
 def findNode_Requests(staticHeaderValues, target, numRequests):
     if staticHeaderValues['sending_ip_ver'] == 4:
         addrFamily = socket.AF_INET
@@ -107,69 +123,48 @@ def findNode_Requests(staticHeaderValues, target, numRequests):
     return recvAddrv4_list, recvAddrv6_list
 
 
-def recvReply(sock):
-    ipv4_addrList = []
-    ipv6_addrList = []
-    try:
-        while True:
-            data, sender_ip = sock.recvfrom(1024)  # buffer size is 1024 bytes
-            message = DHT_GnutellaMessage.GnutellaMessage(data.hex())
-            try:
-                ipv4_addrList.extend(zip(message.ipv4_addresses_found, message.ipv4_ports_found))  # creating tuples
-                ipv6_addrList.extend(zip(message.ipv6_addresses_found, message.ipv6_ports_found))
-            except Exception:
-                return [], []
-            #print(message)
-    except socket.timeout:
-        #print("socket timeout")  # verbose
-        print("Peer scanned.")
-    return ipv4_addrList, ipv6_addrList
 
+#
+# def initAddrQueue(staticHeaderValues, ip_ver):
+#     if _config.dht_sending_ipVer == 4:
+#         mojito_targets = _targets.dht_targets_ipv4
+#         os.makedirs(os.path.dirname(_config.dht_ipv4_file__ipv4Mode), exist_ok=True)  # create directories
+#         os.makedirs(os.path.dirname(_config.dht_ipv6_file__ipv4Mode), exist_ok=True)
+#         f4 = open(_config.dht_ipv4_file__ipv4Mode, 'w+')  # create files here, fix to issue that sometimes files were not created when crawler threads tried to open them
+#         f4.close()
+#         f6 = open(_config.dht_ipv6_file__ipv4Mode, 'w+')
+#         f6.close()
+#     else:
+#         mojito_targets = _targets.dht_targets_ipv6
+#         os.makedirs(os.path.dirname(_config.dht_ipv4_file__ipv6Mode), exist_ok=True)  # create directories
+#         os.makedirs(os.path.dirname(_config.dht_ipv6_file__ipv6Mode), exist_ok=True)
+#         f4 = open(_config.dht_ipv4_file__ipv6Mode, 'w+')  # create files here, fix to issue that sometimes files were not created when crawler threads tried to open them
+#         f4.close()
+#         f6 = open(_config.dht_ipv6_file__ipv6Mode, 'w+')
+#         f6.close()
+#
+#     queue = Queue(maxsize=_config.dht_queue_size)
+#     for i in range(len(mojito_targets)):
+#         recvAddrv4, recvAddrv6 = findNode_Requests(staticHeaderValues=staticHeaderValues, target=mojito_targets[i], numRequests=_config.dht_number_of_requests_per_address)
+#         if ip_ver == 4:
+#             for addrTuple in recvAddrv4:
+#                 if queue.qsize() < _config.dht_queue_size:
+#                     queue.put(addrTuple)
+#                 else:
+#                     break
+#         else:
+#             for addrTuple in recvAddrv6:
+#                 if queue.qsize() < _config.dht_queue_size:
+#                     queue.put(addrTuple)
+#                 else:
+#                     break
+#     print("Queue initialized.")
+#     return queue
+#
 
-def initAddrQueue(staticHeaderValues, ip_ver):
-    if _config.dht_sending_ipVer == 4:
-        mojito_targets = _targets.dht_targets_ipv4
-        os.makedirs(os.path.dirname(_config.dht_ipv4_file__ipv4Mode), exist_ok=True)  # create directories
-        os.makedirs(os.path.dirname(_config.dht_ipv6_file__ipv4Mode), exist_ok=True)
-        f4 = open(_config.dht_ipv4_file__ipv4Mode, 'w+')  # create files here, fix to issue that sometimes files were not created when crawler threads tried to open them
-        f4.close()
-        f6 = open(_config.dht_ipv6_file__ipv4Mode, 'w+')
-        f6.close()
-    else:
-        mojito_targets = _targets.dht_targets_ipv6
-        os.makedirs(os.path.dirname(_config.dht_ipv4_file__ipv6Mode), exist_ok=True)  # create directories
-        os.makedirs(os.path.dirname(_config.dht_ipv6_file__ipv6Mode), exist_ok=True)
-        f4 = open(_config.dht_ipv4_file__ipv6Mode, 'w+')  # create files here, fix to issue that sometimes files were not created when crawler threads tried to open them
-        f4.close()
-        f6 = open(_config.dht_ipv6_file__ipv6Mode, 'w+')
-        f6.close()
-
-    queue = Queue(maxsize=_config.dht_queue_size)
-    for i in range(len(mojito_targets)):
-        recvAddrv4, recvAddrv6 = findNode_Requests(staticHeaderValues=staticHeaderValues, target=mojito_targets[i], numRequests=_config.dht_number_of_requests_per_address)
-        if ip_ver == 4:
-            for addrTuple in recvAddrv4:
-                if queue.qsize() < _config.dht_queue_size:
-                    queue.put(addrTuple)
-                else:
-                    break
-        else:
-            for addrTuple in recvAddrv6:
-                if queue.qsize() < _config.dht_queue_size:
-                    queue.put(addrTuple)
-                else:
-                    break
-    print("Queue initialized.")
-    return queue
-
-
-def crawlDHT(staticHeaderValues, run_event, addrQueue, writeQueue):
-    if _config.dht_sending_ipVer == 4:
-        v4File = _config.dht_ipv4_file__ipv4Mode
-        v6File = _config.dht_ipv6_file__ipv4Mode
-    else:
-        v4File = _config.dht_ipv4_file__ipv6Mode
-        v6File = _config.dht_ipv6_file__ipv6Mode
+def crawlDHT(staticHeaderValues, run_event, addrQueue, writeQueues):
+    v4File, v6File = _utilities_.get_Filenames("mojito")
+    writeQueue = writeQueues[0]  # only one type of peer in this mode
 
     while run_event.is_set():
         fromQueue = False
@@ -177,7 +172,8 @@ def crawlDHT(staticHeaderValues, run_event, addrQueue, writeQueue):
             if _config.dht_sending_ipVer == 4:
                 addrNum = random.randint(0, (len(_targets.dht_targets_ipv4) - 1))  # choose random addr from hardcoded ipv4 addr
                 target_addr = _targets.dht_targets_ipv4[addrNum]
-                print("Address queue empty - probably all IPv4 addresses in DHT scraped or using unreachable seed nodes (-> seed manually)...")
+                print("Address queue empty - probably all IPv4 addresses in DHT scraped or using unreachable seed "
+                      "nodes (-> seed manually)...")
             else:
                 addrNum = random.randint(0, (len(_targets.dht_targets_ipv6) - 1))  # choose random addr from hardcoded ipv6 addr
                 target_addr = _targets.dht_targets_ipv6[addrNum]
@@ -186,16 +182,16 @@ def crawlDHT(staticHeaderValues, run_event, addrQueue, writeQueue):
             target_addr = addrQueue.get()
             fromQueue = True
 
-        recvAddrv4, recvAddrv6 = findNode_Requests(staticHeaderValues=staticHeaderValues, target=target_addr, numRequests=_config.dht_number_of_requests_per_address)
+        recvAddrv4, recvAddrv6 = findNode_Requests(staticHeaderValues=staticHeaderValues, target=target_addr, numRequests=_config.dht_num_requests)
         writeQueue.join()  # wait until all addresses in the writeQueue are processed to avoid duplicate writes... Seems buggy though, so checking again in writeToFile()
         with open(v4File, 'r+') as f:
             for addrTuple in recvAddrv4:
                 if addrTuple[0] in f.read():
                     break
                 if _config.dht_sending_ipVer == 4:
-                    if addrQueue.qsize() < _config.dht_queue_size:
+                    if addrQueue.qsize() < _config.dht_addr_queue_size:
                         addrQueue.put(addrTuple)
-                if writeQueue.qsize() < _config.dht_write_queue_size:
+                if writeQueue.qsize() < _config.dht_addr_queue_size:
                     writeQueue.put(('ipv4', addrTuple[0]))
                 else:
                     print("Write Queue full! Omitting IPv4-Addresses!!!")
@@ -204,7 +200,7 @@ def crawlDHT(staticHeaderValues, run_event, addrQueue, writeQueue):
                 if addrTuple[0] in f.read():
                     break
                 if _config.dht_sending_ipVer == 6:
-                    if addrQueue.qsize() < _config.dht_queue_size:
+                    if addrQueue.qsize() < _config.dht_addr_queue_size:
                         addrQueue.put(addrTuple)
                         #print("Put in addrQueue")  # verbose
                 if writeQueue.qsize() < _config.dht_write_queue_size:
@@ -216,65 +212,65 @@ def crawlDHT(staticHeaderValues, run_event, addrQueue, writeQueue):
             addrQueue.task_done()
 
 
-def get_workerThreads(staticHeaderValues, run_event, num_threads, addrQueue, writeQueue):
-    workers = []
-    for i in range(num_threads):
-        args = {'staticHeaderValues': staticHeaderValues, 'run_event': run_event, 'addrQueue': addrQueue, 'writeQueue': writeQueue}
-        worker = Thread(target=crawlDHT, kwargs=args)
-        worker.daemon = True
-        workers.append(worker)
-    return workers
+# def get_workerThreads(staticHeaderValues, run_event, num_threads, addrQueue, writeQueue):
+#     workers = []
+#     for i in range(num_threads):
+#         args = {'staticHeaderValues': staticHeaderValues, 'run_event': run_event, 'addrQueue': addrQueue, 'writeQueue': writeQueue}
+#         worker = Thread(target=crawlDHT, kwargs=args)
+#         worker.daemon = True
+#         workers.append(worker)
+#     return workers
 
 
-def writeToFile(writeQueue, run_event, filenamev4, filenamev6):
-    f4 = open(filenamev4, 'a+')  # make sure files are created
-    f4.close()
-    f6 = open(filenamev6, 'a+')
-    f6.close()
-
-    while run_event.is_set():
-        while not writeQueue.empty():
-            version, addr = writeQueue.get()
-            if version == 'ipv4':
-                with open(filenamev4, 'r+') as f:  # open as read so cursor starts at beginning of file
-                    if addr not in f.read():
-                        f.write(addr + "\n")
-            else:
-                with open(filenamev6, 'r+') as f:
-                    if addr not in f.read():
-                        f.write(addr + "\n")
-                        print("Wrote to file")  # verbose
-            writeQueue.task_done()
-        time.sleep(3)
-
-
-def get_writerThread(writeQueue, run_event):
-    if _config.dht_sending_ipVer == 4:
-        v4File = _config.dht_ipv4_file__ipv4Mode
-        v6File = _config.dht_ipv6_file__ipv4Mode
-    else:
-        v4File = _config.dht_ipv4_file__ipv6Mode
-        v6File = _config.dht_ipv6_file__ipv6Mode
-    args = {'writeQueue': writeQueue, 'run_event': run_event, 'filenamev4': v4File, 'filenamev6': v6File}
-    writer = Thread(target=writeToFile, kwargs=args)
-    writer.daemon = True
-    return writer
+# def writeToFile(writeQueue, run_event, filenamev4, filenamev6):
+#     f4 = open(filenamev4, 'a+')  # make sure files are created
+#     f4.close()
+#     f6 = open(filenamev6, 'a+')
+#     f6.close()
+#
+#     while run_event.is_set():
+#         while not writeQueue.empty():
+#             version, addr = writeQueue.get()
+#             if version == 'ipv4':
+#                 with open(filenamev4, 'r+') as f:  # open as read so cursor starts at beginning of file
+#                     if addr not in f.read():
+#                         f.write(addr + "\n")
+#             else:
+#                 with open(filenamev6, 'r+') as f:
+#                     if addr not in f.read():
+#                         f.write(addr + "\n")
+#                         print("Wrote to file")  # verbose
+#             writeQueue.task_done()
+#         time.sleep(3)
 
 
-def runThreads(workers, writer, run_event):
-    for w in workers:
-        w.start()
-    writer.start()
+# def get_writerThread(writeQueue, run_event):
+#     if _config.dht_sending_ipVer == 4:
+#         v4File = _config.dht_ipv4_file__ipv4Mode
+#         v6File = _config.dht_ipv6_file__ipv4Mode
+#     else:
+#         v4File = _config.dht_ipv4_file__ipv6Mode
+#         v6File = _config.dht_ipv6_file__ipv6Mode
+#     args = {'writeQueue': writeQueue, 'run_event': run_event, 'filenamev4': v4File, 'filenamev6': v6File}
+#     writer = Thread(target=writeToFile, kwargs=args)
+#     writer.daemon = True
+#     return writer
 
-    try:
-        while True:
-            time.sleep(.5)
-    except KeyboardInterrupt:
-        print("Stopping workers...")
-        run_event.clear()
-        for w in workers:
-            w.join()
-        writer.join()
-        print("Workers stopped. Exiting.")
 
+# def runThreads(workers, writer, run_event):
+#     for w in workers:
+#         w.start()
+#     writer.start()
+#
+#     try:
+#         while True:
+#             time.sleep(.5)
+#     except KeyboardInterrupt:
+#         print("Stopping workers...")
+#         run_event.clear()
+#         for w in workers:
+#             w.join()
+#         writer.join()
+#         print("Workers stopped. Exiting.")
+#
 
