@@ -82,7 +82,7 @@ def findNode_Requests(staticHeaderValues, target, numRequests):
     else:
         addrFamily = socket.AF_INET6
     sock = socket.socket(addrFamily, socket.SOCK_DGRAM)
-    sock.settimeout(_config.dht_socket_timeout)  # Socket schließt nach 20s
+    sock.settimeout(_config.dht_socket_timeout)  # Socket times out after set amount of time
     sock.bind((staticHeaderValues['local_ip'], 0))
 
     payload_len = payload_len = f'{hex(58)[2:]}000000'  # Standard für FIND NODE REQUEST: 58 dec, 3a 00 00 00 (big endian)

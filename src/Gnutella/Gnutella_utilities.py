@@ -11,6 +11,17 @@ from config import _config
 from config import _targets
 
 
+def createGnutellaSocket():
+    if _config.gnutella_sending_ipVer == 4:
+        family = socket.AF_INET
+    else:
+        family = socket.AF_INET6
+    sock = socket.socket(family=family, type=socket.SOCK_STREAM)
+    sock.bind((_utilities_.get_local_ip(_config.gnutella_sending_ipVer), 0))
+    sock.settimeout(_config.gnutella_socket_timeout)
+    return sock
+
+
 def processGnutellaError(gnutellaResponse, foundIPs):
     hubIPs = []
     leafIPs = []
@@ -65,7 +76,7 @@ def processGnutellaError(gnutellaResponse, foundIPs):
     return 1, [hubIPs, leafIPs]
 
 
-def do_handshake(sock, target, crawlerHeader=False, ip6Header=False):
+def do_handshake(sock, target, crawlerHeader=False, ip6Header=False, noACK=False):
     foundIPs = []
 
     if crawlerHeader:
@@ -87,17 +98,35 @@ def do_handshake(sock, target, crawlerHeader=False, ip6Header=False):
         else:
             return processGnutellaError(gnutellaResponse, foundIPs)
     else:  # normal handshake for Ping message etc.
-        if gnutellaResponse.statusCode == 200:
+        if gnutellaResponse.statusCode == 200 and not noACK:
             print("200 - OK... sending ACK\n")
             gnutellaAck = Gnutella_ConnectMessage.ConnectMessage.ackPacket().toString() + "\r\n"
             sock.sendall(gnutellaAck.encode())
             return 0, []
+        elif noACK:
+            if gnutellaResponse.headers['X-Ultrapeer'] == "True":
+                return 0, 1
+            elif gnutellaResponse.headers['X-Ultrapeer'] == "False":
+                return 0, 0
+            else:
+                return 0, -1
         else:
             return processGnutellaError(gnutellaResponse, foundIPs)
 
 
-def handle_pong(pongStr):
-    return
+'''
+    Checks if G1/G2 Peer is an Ultrapeer or a Leaf
+'''
+def is_ultrapeer(ipTuple):
+    sock = createGnutellaSocket()
+    sock.connect(ipTuple)
+    handshakeResp = do_handshake(sock=sock, target=ipTuple, crawlerHeader=False, ip6Header=False, noACK=True)
+    if handshakeResp[0] == 0:
+        ultrapeer = handshakeResp[1]
+        if ultrapeer == -1:
+            print("No 'X-Ultrapeer'-header found while checking peer status")
+        return ultrapeer
+    return -2
 
 
 #@timeout(_config.gnutella_socket_timeout - 2)
@@ -152,12 +181,15 @@ def ping(sock, target, crawlerHeader=False, ip6Header=False):
                 ping_message = Gnutella_GnutellaPacket.GnutellaPacket.crawlerPingv4().toString()
                 ping_bytes = zlib.compress(bytearray.fromhex(ping_message))
                 sock.sendall(ping_bytes)
+
                 # recv Pong
                 while True:
+                    hubIPs = []
+                    leafIPs = []
                     decompressor = zlib.decompressobj()
                     recv_bytes = sock.recv(1024*2)
                     hexstr = recv_bytes.hex()
-                    print(f"Orig. Hexstr: {hexstr}")  # verbose
+                    # print(f"Orig. Hexstr: {hexstr}")  # verbose
                     pong_bytes = [int(hexstr[i:i + 2], 16) for i in range(0, len(hexstr), 2)]
                     decompressed_bytestr = b''
                     decompressed_hexstring = ""
@@ -167,10 +199,30 @@ def ping(sock, target, crawlerHeader=False, ip6Header=False):
                         if decompressed_byte != b'':
                             decompressed_bytestr += decompressed_byte
                             decompressed_hexstring += decompressed_byte.hex()
-                            #print(decompressed_byte.hex())
+                            # print(decompressed_byte.hex())
                     decompressor.flush()
-                    print(f"Pong decompressed: {decompressed_hexstring}")  # verbose
-                    handle_pong(decompressed_hexstring)
+                    # print(f"Pong decompressed: {decompressed_hexstring}")  # verbose
+                    pongPacket = Gnutella_GnutellaPacket.GnutellaPacket.fromString(decompressed_hexstring)
+                    if pongPacket.payloadtype == "01" and pongPacket.payloadlen != 0:  # if Pong
+                        tmp_packet = pongPacket
+                        while True:
+                            payload_remainder, ipTuple = tmp_packet.processPayload()
+                            ultrapeer = 0
+                            try:
+                                ultrapeer = is_ultrapeer(ipTuple)
+                            except Exception as e:
+                                print(f"Exception thrown getting peer status: {e}")  # verbose
+
+                            if ultrapeer == 1:
+                                hubIPs.append(ipTuple)
+                            else:
+                                leafIPs.append(ipTuple)  # note: also peers where status is undetermined are added to leaves!
+                            tmp_packet = Gnutella_GnutellaPacket.GnutellaPacket.fromString(payload_remainder)
+                            if payload_remainder == "":  # once payload has been fully processed
+                                print("\n")
+                                return 3, [hubIPs, leafIPs]
+                    else:
+                        print("Received something other than a Pong - no further processing.")
             except zlib.error:
                 print(f"Error compressing/decompressing: zlib Error thrown\n")
 
@@ -181,21 +233,14 @@ def ping(sock, target, crawlerHeader=False, ip6Header=False):
     except UnicodeDecodeError:
         print(f"Error while decoding response from {target}\n")
     except AttributeError:
-        print(f"Error while pinging {target}: Message initialization failed (known issue)")
+        print(f"Error while pinging {target}: Message initialization failed (known issue)\n")
     except Exception as e:
         print(f"Unknown error while pinging {target}: {e}\n")
     return ret
 
 
 def gnutellaPings(target, crawlerHeader=False, ip6Header=False):
-    if _config.gnutella_sending_ipVer == 4:
-        family = socket.AF_INET
-    else:
-        family = socket.AF_INET6
-
-    sock = socket.socket(family=family, type=socket.SOCK_STREAM)
-    sock.bind((_utilities_.get_local_ip(_config.gnutella_sending_ipVer), 0))
-    sock.settimeout(_config.gnutella_socket_timeout)
+    sock = createGnutellaSocket()
     print(f"{sock.getsockname()[0]}:{sock.getsockname()[1]} --> {target[0]}:{target[1]}")  # verbose
     retCode, retIPs = ping(sock, target, crawlerHeader, ip6Header)
     sock.close()

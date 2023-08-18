@@ -11,6 +11,13 @@ import threading
 from config import _config
 
 
+
+def swap_byteorder(hexstr):
+    if len(hexstr) % 2:
+        print("Can't reverse byte order: Uneven amount of characters!")
+    swappedStr = ''.join([hexstr[i:i + 2] for i in range(0, len(hexstr), 2)][::-1])
+    return swappedStr
+
 def get_public_ip(ip_ver):
     try:
         response = requests.get(f"https://api{ip_ver}.ipify.org?format=json")  # ipv4 addr or ipv6 addr
