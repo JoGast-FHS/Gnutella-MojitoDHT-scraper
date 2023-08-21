@@ -109,13 +109,13 @@ def replaceStr(str, index, newStr):
     return str[:index] + newStr + str[index + len(newStr):]
 
 
-def get_workerThreads(target, run_event, num_threads, addrQueue, writeQueues, staticHeaderValues):
+def get_workerThreads(target, run_event, num_threads, addrQueue, writeQueues, ip6Header, staticHeaderValues):
     workers = []
     for i in range(num_threads):
         if staticHeaderValues == "":
-            args = {'run_event': run_event, 'addrQueue': addrQueue, 'writeQueues': writeQueues}
+            args = {'run_event': run_event, 'addrQueue': addrQueue, 'writeQueues': writeQueues, 'ip6Header': ip6Header}
         else:
-            args = {'staticHeaderValues': staticHeaderValues, 'run_event': run_event, 'addrQueue': addrQueue, 'writeQueues': writeQueues}
+            args = {'staticHeaderValues': staticHeaderValues, 'run_event': run_event, 'addrQueue': addrQueue, 'writeQueues': writeQueues, 'ip6Header': ip6Header}
         worker = threading.Thread(target=target, kwargs=args)
         worker.daemon = True
         workers.append(worker)
@@ -184,13 +184,16 @@ def runThreads(workers, writers, run_event):
         writer.start()
 
     try:
-        while True:
-            time.sleep(.5)
-    except KeyboardInterrupt:
-        print("-----------------------------------\nStopping workers...")
-        run_event.clear()
         for w in workers:
             w.join()
         for writer in writers:
             writer.join()
+        print("\n-----------------------------------------------------------")
+        print(f"Resorted to hardcoded addresses several times.\nIf crawler ran for only a few seconds - likely error. See above.\nOtherwise: Crawler finished! Check respective files for results (files editable in _config)!\r\n")
+        # while True:
+        #     time.sleep(.5)
+    except KeyboardInterrupt:
+        print("\n-----------------------------------------------------------\nStopping workers...")
+        run_event.clear()
         print("Workers stopped. Exiting.")
+

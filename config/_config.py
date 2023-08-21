@@ -17,10 +17,10 @@ dht_ipv6_file__ipv6Mode = "Results/MojitoDHT/v6mode/IPv6_Addr/Addr_found.txt"
 #GNUTELLA SETTINGS
 gnutella_sending_ipVer = 4
 gnutella_crawlerHeader = False  # If 'True': Using Header "Crawler". If 'False': Using Gnutella1 Crawler-Ping.
-gnutella_ip6Header = False       # GGEP extension header for IPv6-Adressen will be added to handshake packets - NOT SUPPORTED BY ALL SERVENTS
-gnutella_ip6HeaderString = "x-Features: IP/6.4\r\n"
+gnutella_ip6Header = True       # GGEP extension header for IPv6 addresses will be added to handshake packets - NOT SUPPORTED BY ALL SERVENTS
+gnutella_ip6HeaderString = "GGEP: 0.5\r\nx-Features: IP/6.0\r\n"
 gnutella_num_requests = 1
-gnutella_num_worker_threads = 4
+gnutella_num_worker_threads = 3
 gnutella_socket_timeout = 6
 gnutella_write_queue_size = 1000
 gnutella_addr_queue_size = 1000

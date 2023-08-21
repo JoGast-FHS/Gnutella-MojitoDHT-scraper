@@ -21,10 +21,13 @@ class GnutellaPacket:
         ip_addr = hex2ip(payload[2*bytelen:6*bytelen], 4)  # ONLY IPv4 capable, to best of knowledge; ip bytes NOT to be swapped
         files_nr = int(swap_byteorder(payload[6*bytelen:10*bytelen]), 16)
         kb_nr = int(swap_byteorder(payload[10*bytelen:14*bytelen]), 16)
-        ggep_block = swap_byteorder(payload[14*bytelen:payloadlen_bytes])
+        ext_block = payload[14*bytelen:payloadlen_bytes]
+        ext_block_swapped = swap_byteorder(ext_block)
         remainder = payload[payloadlen_bytes:]  # Payload Length signifies end of payload for ONE Header + Payload. After that, more may have been transmitted.
         #print(f"Pong Payload Processing:\nPort: {port}\nIP-Addr.: {ip_addr}\nNr. Files: {files_nr}\nNr. kB: {kb_nr}\nGGEP Block: {ggep_block}\nRemainder: {remainder}")  # verbose
-        print(f"Pong returned ({ip_addr}, {port})")
+        print(f"Pong returned tuple ({ip_addr}, {port})")
+        if ext_block != "":
+            print(f"Extension Block: {ext_block}")
         return remainder, (ip_addr, port)
 
     @classmethod

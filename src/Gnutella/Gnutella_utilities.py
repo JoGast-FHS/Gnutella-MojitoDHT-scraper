@@ -22,6 +22,22 @@ def createGnutellaSocket():
     return sock
 
 
+def decompressHexstring(hexstr):
+    decompressor = zlib.decompressobj()
+    pong_bytes = [int(hexstr[i:i + 2], 16) for i in range(0, len(hexstr), 2)]
+    decompressed_bytestr = b''
+    decompressed_hexstring = ""
+    for b in pong_bytes:
+        byte = b.to_bytes(1, "big")
+        decompressed_byte = decompressor.decompress(byte)
+        if decompressed_byte != b'':
+            decompressed_bytestr += decompressed_byte
+            decompressed_hexstring += decompressed_byte.hex()
+            # print(decompressed_byte.hex())
+    decompressor.flush()
+    return decompressed_hexstring, decompressed_bytestr
+
+
 def processGnutellaError(gnutellaResponse, foundIPs):
     hubIPs = []
     leafIPs = []
@@ -76,7 +92,7 @@ def processGnutellaError(gnutellaResponse, foundIPs):
     return 1, [hubIPs, leafIPs]
 
 
-def do_handshake(sock, target, crawlerHeader=False, ip6Header=False, noACK=False):
+def doHandshake(sock, target, crawlerHeader=False, ip6Header=False, noACK=False):
     foundIPs = []
 
     if crawlerHeader:
@@ -104,10 +120,11 @@ def do_handshake(sock, target, crawlerHeader=False, ip6Header=False, noACK=False
             sock.sendall(gnutellaAck.encode())
             return 0, []
         elif noACK:
-            if gnutellaResponse.headers['X-Ultrapeer'] == "True":
-                return 0, 1
-            elif gnutellaResponse.headers['X-Ultrapeer'] == "False":
-                return 0, 0
+            if 'X-Ultrapeer' in gnutellaResponse.headers:
+                if gnutellaResponse.headers['X-Ultrapeer'] == "True":
+                    return 0, 1
+                elif gnutellaResponse.headers['X-Ultrapeer'] == "False":
+                    return 0, 0
             else:
                 return 0, -1
         else:
@@ -117,16 +134,70 @@ def do_handshake(sock, target, crawlerHeader=False, ip6Header=False, noACK=False
 '''
     Checks if G1/G2 Peer is an Ultrapeer or a Leaf
 '''
-def is_ultrapeer(ipTuple):
+def isUltrapeer(ipTuple):
     sock = createGnutellaSocket()
     sock.connect(ipTuple)
-    handshakeResp = do_handshake(sock=sock, target=ipTuple, crawlerHeader=False, ip6Header=False, noACK=True)
+    handshakeResp = doHandshake(sock=sock, target=ipTuple, crawlerHeader=False, ip6Header=False, noACK=True)
+    headerRecv = "YES"
     if handshakeResp[0] == 0:
         ultrapeer = handshakeResp[1]
         if ultrapeer == -1:
-            print("No 'X-Ultrapeer'-header found while checking peer status")
+            headerRecv = "NO"
+        print(f"'X-Ultrapeer' header recv from {ipTuple}: {headerRecv}\n")  # verbose
         return ultrapeer
     return -2
+
+
+def processExtensionBlock(extBlock):
+    pass
+
+
+def processPong(pongPacket, checkUP=True):
+    ips = []
+    ips.append([])  # hubIPs
+    ips.append([])  # leafIPs
+    if pongPacket.payloadtype == "01" and pongPacket.payloadlen != 0:  # if Pong
+        tmp_packet = pongPacket
+        while True:
+            payload_remainder, ipTuple = tmp_packet.processPayload()
+            ultrapeer = 0
+            try:
+                if checkUP:
+                    inUfile = False
+                    inLfile = False
+                    _, _, _, _, v4File_hubs_p, v4File_leaves_p, _, _ = _utilities_.get_Filenames("gnutella")
+                    with open(v4File_hubs_p, 'r+') as f:  # check only if IP is not already in one of the files
+                        if ipTuple[0] in f.read():
+                            inUfile = True
+                        f.close()
+                    if not inUfile:
+                        with open(v4File_leaves_p, 'r+') as f:
+                            if ipTuple[0] in f.read():
+                                inLfile = True
+                            f.close()
+                    if inUfile:
+                        ultrapeer = 1
+                        print("-> Hub already known-")  # verbose
+                    elif inLfile:
+                        ultrapeer = 0
+                        print("-> Leaf already known")  # verbose
+                    else:
+                        ultrapeer = isUltrapeer(ipTuple)  # ^ see last comment
+            except KeyError as e:
+                print(f"KeyError getting peer status: {e}\n")  # verbose
+            except Exception as e:
+                print(f"Exception thrown getting peer status: {e}\n")  # verbose
+            if ultrapeer == 1:
+                ips[0].append(ipTuple)
+            else:
+                ips[1].append(ipTuple)  # note: also peers where status is undetermined are added to leaves!
+            tmp_packet = Gnutella_GnutellaPacket.GnutellaPacket.fromString(payload_remainder)
+            if payload_remainder == "":  # once payload has been fully processed
+                print("\n")
+                return 3, ips
+    else:
+        print("Received something other than a Pong - no further processing.")
+        return -1, []
 
 
 #@timeout(_config.gnutella_socket_timeout - 2)
@@ -141,7 +212,7 @@ def ping(sock, target, crawlerHeader=False, ip6Header=False):
     try:
         sock.connect(target)
         timedRecv_f = timeout(_config.gnutella_socket_timeout - 3)(timedRecv)
-        handshakeResp = do_handshake(sock, target, crawlerHeader, ip6Header)
+        handshakeResp = doHandshake(sock, target, crawlerHeader, ip6Header)
         ret = handshakeResp
         if handshakeResp[0] == 3 and crawlerHeader:
             stitchedResp = handshakeResp[1][0]
@@ -184,45 +255,17 @@ def ping(sock, target, crawlerHeader=False, ip6Header=False):
 
                 # recv Pong
                 while True:
-                    hubIPs = []
-                    leafIPs = []
-                    decompressor = zlib.decompressobj()
                     recv_bytes = sock.recv(1024*2)
                     hexstr = recv_bytes.hex()
+                    decompressed_hexstring, decompressed_bytestring = decompressHexstring(hexstr)
                     # print(f"Orig. Hexstr: {hexstr}")  # verbose
-                    pong_bytes = [int(hexstr[i:i + 2], 16) for i in range(0, len(hexstr), 2)]
-                    decompressed_bytestr = b''
-                    decompressed_hexstring = ""
-                    for b in pong_bytes:
-                        byte = b.to_bytes(1, "big")
-                        decompressed_byte = decompressor.decompress(byte)
-                        if decompressed_byte != b'':
-                            decompressed_bytestr += decompressed_byte
-                            decompressed_hexstring += decompressed_byte.hex()
-                            # print(decompressed_byte.hex())
-                    decompressor.flush()
                     # print(f"Pong decompressed: {decompressed_hexstring}")  # verbose
                     pongPacket = Gnutella_GnutellaPacket.GnutellaPacket.fromString(decompressed_hexstring)
-                    if pongPacket.payloadtype == "01" and pongPacket.payloadlen != 0:  # if Pong
-                        tmp_packet = pongPacket
-                        while True:
-                            payload_remainder, ipTuple = tmp_packet.processPayload()
-                            ultrapeer = 0
-                            try:
-                                ultrapeer = is_ultrapeer(ipTuple)
-                            except Exception as e:
-                                print(f"Exception thrown getting peer status: {e}")  # verbose
-
-                            if ultrapeer == 1:
-                                hubIPs.append(ipTuple)
-                            else:
-                                leafIPs.append(ipTuple)  # note: also peers where status is undetermined are added to leaves!
-                            tmp_packet = Gnutella_GnutellaPacket.GnutellaPacket.fromString(payload_remainder)
-                            if payload_remainder == "":  # once payload has been fully processed
-                                print("\n")
-                                return 3, [hubIPs, leafIPs]
+                    retCode, ips = processPong(pongPacket)
+                    if retCode == 3:
+                        return retCode, ips
                     else:
-                        print("Received something other than a Pong - no further processing.")
+                        continue
             except zlib.error:
                 print(f"Error compressing/decompressing: zlib Error thrown\n")
 
@@ -232,6 +275,9 @@ def ping(sock, target, crawlerHeader=False, ip6Header=False):
         print(f"Error while pinging {target}: Connection failed\n")
     except UnicodeDecodeError:
         print(f"Error while decoding response from {target}\n")
+    except KeyError:
+        #raise  # debugging purposes
+        print(f"Error while pinging {target}: KeyError\n")
     except AttributeError:
         print(f"Error while pinging {target}: Message initialization failed (known issue)\n")
     except Exception as e:
@@ -282,9 +328,14 @@ def crawlGnutella(run_event, addrQueue, writeQueues, ip6Header=False):
     writeQueue_hubs = writeQueues[0]
     writeQueue_leaves = writeQueues[1]
 
+    emptyTries = 0
     while run_event.is_set():
         fromQueue = False
         if addrQueue.empty():  # fallback to hardcoded addresses
+            emptyTries += 1
+            if emptyTries >= 5:
+                run_event.clear()
+                return
             if _config.gnutella_sending_ipVer == 4:
                 addrNum = random.randint(0, (len(_targets.gnutella_targets_ipv4) - 1))  # choose random addr from hardcoded ipv4 addr
                 target_addr = _targets.gnutella_targets_ipv4[addrNum]
