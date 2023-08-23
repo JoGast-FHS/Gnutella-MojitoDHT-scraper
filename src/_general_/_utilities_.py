@@ -11,6 +11,9 @@ import threading
 from config import _config
 
 
+queues_lock = threading.Lock()
+allAddrSet = set()  # in-memory representation of known ip addresses, to not have to re-read files every time
+faultyAddrSet = set()
 
 def swap_byteorder(hexstr):
     if len(hexstr) % 2:
@@ -123,25 +126,31 @@ def get_workerThreads(target, run_event, num_threads, addrQueue, writeQueues, ip
 
 
 def writeToFile(writeQueue, run_event, v4File, v6File):
-    f4 = open(v4File, 'a+')  # make sure files are created
-    f4.close()
-    f6 = open(v6File, 'a+')
-    f6.close()
+    with queues_lock:
+        with open(v4File, 'a+') as f:  # make sure files are created
+            pass
+        with open(v6File, 'a+') as f:
+            pass
 
     while run_event.is_set():
-        while not writeQueue.empty():
-            version, addr = writeQueue.get()
-            if version == 'ipv4':
-                with open(v4File, 'r+') as f:  # open as read so cursor starts at beginning of file
-                    if addr not in f.read():
-                        f.write(addr + "\n")
-            else:
-                with open(v6File, 'r+') as f:
-                    if addr not in f.read():
-                        f.write(addr + "\n")
-                        #print("Wrote to file")  # verbose
-            writeQueue.task_done()
-        time.sleep(2)
+        with queues_lock:
+            while not writeQueue.empty():
+                version, addrTuple = writeQueue.get()
+                if version == 'ipv4':
+                    with open(v4File, 'r+') as f:  # open as read so cursor starts at beginning of file
+                        if addrTuple[0] not in f.read():
+                            f.write(addrTuple[0] + "\n")
+                            if addrTuple not in allAddrSet:
+                                allAddrSet.add(addrTuple)
+                else:
+                    with open(v6File, 'r+') as f:
+                        if addrTuple[0] not in f.read():
+                            f.write(addrTuple[0] + "\n")
+                            #print("Wrote to file")  # verbose
+                            if addrTuple not in allAddrSet:
+                                allAddrSet.add(addrTuple)
+                writeQueue.task_done()
+        time.sleep(3)
 
 
 def get_writerThread(writeQueues, run_event):

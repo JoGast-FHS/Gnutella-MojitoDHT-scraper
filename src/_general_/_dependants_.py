@@ -14,12 +14,13 @@ def initAddrQueue(addrQSize, staticHeaderValues, ip_ver):
         gnutella = False
         numRequests = _config.dht_num_requests
         v4File_DHT, v6File_DHT = _utilities_.get_Filenames("mojito")
-        os.makedirs(os.path.dirname(v4File_DHT), exist_ok=True)  # create directories
-        os.makedirs(os.path.dirname(v6File_DHT), exist_ok=True)
-        f4 = open(v4File_DHT, 'w+')  # create files here, bandaid fix to issue that sometimes files were not created when crawler threads tried to open them
-        f4.close()
-        f6 = open(v6File_DHT, 'w+')
-        f6.close()
+        with _utilities_.queues_lock:
+            os.makedirs(os.path.dirname(v4File_DHT), exist_ok=True)  # create directories
+            os.makedirs(os.path.dirname(v6File_DHT), exist_ok=True)
+            f4 = open(v4File_DHT, 'w+')  # create files here, bandaid fix to issue that sometimes files were not created when crawler threads tried to open them
+            f4.close()
+            f6 = open(v6File_DHT, 'w+')
+            f6.close()
         if _config.dht_sending_ipVer == 4:
             targets = _targets.dht_targets_ipv4
         else:
@@ -39,18 +40,19 @@ def initAddrQueue(addrQSize, staticHeaderValues, ip_ver):
             v4File_leaves = v4File_leaves_p
             v6File_hubs = v6File_hubs_p
             v6File_leaves = v6File_leaves_p
-        os.makedirs(os.path.dirname(v4File_hubs), exist_ok=True)  # create directories
-        os.makedirs(os.path.dirname(v6File_hubs), exist_ok=True)
-        os.makedirs(os.path.dirname(v4File_leaves), exist_ok=True)
-        os.makedirs(os.path.dirname(v6File_leaves), exist_ok=True)
-        f4_h = open(v4File_hubs, 'w+')  # create files here, bandaid fix to issue that sometimes files were not created when crawler threads tried to open them
-        f4_h.close()
-        f6_h = open(v6File_hubs, 'w+')
-        f6_h.close()
-        f6_l = open(v6File_leaves, 'w+')
-        f6_l.close()
-        f6_l = open(v6File_leaves, 'w+')
-        f6_l.close()
+        with _utilities_.queues_lock:
+            os.makedirs(os.path.dirname(v4File_hubs), exist_ok=True)  # create directories
+            os.makedirs(os.path.dirname(v6File_hubs), exist_ok=True)
+            os.makedirs(os.path.dirname(v4File_leaves), exist_ok=True)
+            os.makedirs(os.path.dirname(v6File_leaves), exist_ok=True)
+            with open(v4File_hubs, 'w') as f:  # create files here, bandaid fix to issue that sometimes files were not created when crawler threads tried to open them
+                pass
+            with open(v6File_hubs, 'w') as f:
+                pass
+            with open(v4File_leaves, 'w') as f:
+                pass
+            with open(v6File_leaves, 'w') as f:
+                pass
     else:
         print("Error: No valid crawler specified in config.py!")
         exit(1)
