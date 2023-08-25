@@ -12,7 +12,8 @@ from config import _config
 
 
 queues_lock = threading.Lock()
-allAddrSet = set()  # in-memory representation of known ip addresses, to not have to re-read files every time
+writtenAddrSet = set()  # in-memory representation of known ip addresses, to not have to re-read files every time
+pingedAddrSet = set()
 faultyAddrSet = set()
 
 def swap_byteorder(hexstr):
@@ -125,6 +126,24 @@ def get_workerThreads(target, run_event, num_threads, addrQueue, writeQueues, ip
     return workers
 
 
+def inQueues(value, list_of_queues):
+    for q in list_of_queues:
+        found = False
+        temp_items = []
+
+        while not q.empty():
+            item = q.get()
+            if item == value:
+                found = True
+            temp_items.append(item)
+        # Requeue items
+        for item in temp_items:
+            q.put(item)
+        if found:
+            return True
+    return False
+
+
 def writeToFile(writeQueue, run_event, v4File, v6File):
     with queues_lock:
         with open(v4File, 'a+') as f:  # make sure files are created
@@ -140,15 +159,21 @@ def writeToFile(writeQueue, run_event, v4File, v6File):
                     with open(v4File, 'r+') as f:  # open as read so cursor starts at beginning of file
                         if addrTuple[0] not in f.read():
                             f.write(addrTuple[0] + "\n")
-                            if addrTuple not in allAddrSet:
-                                allAddrSet.add(addrTuple)
-                else:
+                            if addrTuple not in writtenAddrSet:
+                                writtenAddrSet.add(addrTuple)
+                            else:
+                                print("--- Unexpected behavior: IPv4 address in file but not in set --- ")
+                elif version == 'ipv6':
                     with open(v6File, 'r+') as f:
                         if addrTuple[0] not in f.read():
                             f.write(addrTuple[0] + "\n")
                             #print("Wrote to file")  # verbose
-                            if addrTuple not in allAddrSet:
-                                allAddrSet.add(addrTuple)
+                            if addrTuple not in writtenAddrSet:
+                                writtenAddrSet.add(addrTuple)
+                            else:
+                                print("--- Unexpected behavior: IPv6 address in file but not in set --- ")
+                else:
+                    print("--- Unexpected behavior: Unknown version string found in write queue --- ")
                 writeQueue.task_done()
         time.sleep(3)
 
@@ -198,7 +223,7 @@ def runThreads(workers, writers, run_event):
         for writer in writers:
             writer.join()
         print("\n-----------------------------------------------------------")
-        print(f"Resorted to hardcoded addresses several times.\nIf crawler ran for only a few seconds - likely error. See above.\nOtherwise: Crawler finished! Check respective files for results (files editable in _config)!\r\n")
+        print(f"Resorted to hardcoded addresses several times.\nIf crawler ran for only a few seconds - likely error. See above.\nOtherwise: Crawler finished! Check respective files for results (file paths editable in _config)!\r\n")
         # while True:
         #     time.sleep(.5)
     except KeyboardInterrupt:

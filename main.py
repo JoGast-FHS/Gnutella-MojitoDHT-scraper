@@ -1,26 +1,23 @@
-import zlib
+import time
 from threading import Event
 from queue import Queue
 
 from config import _config
 from src.MojitoDHT import DHT_utilities
-from src.Gnutella import Gnutella_utilities
-from src.Gnutella import Gnutella_GnutellaPacket
+from src.Gnutella.Gnutella_PacketUtilities import processExtBlock
 from src._general_ import _utilities_
 from src._general_ import _dependants_
 
 
 
 if __name__ == "__main__":
-
     if _config.crawler == "gnutella":
-        staticHeaderValues = ""
+        staticHeaderValues = {}
         numThreads = _config.gnutella_num_worker_threads
         writeQSize = _config.gnutella_write_queue_size
         addrQSize = _config.gnutella_addr_queue_size
         ip6Header = _config.gnutella_ip6Header
         ip_ver = 4
-        targetFunction = Gnutella_utilities.crawlGnutella
 
     elif _config.crawler == "mojito":
         staticHeaderValues = DHT_utilities.get_headerConstants()
@@ -29,25 +26,6 @@ if __name__ == "__main__":
         addrQSize = _config.dht_addr_queue_size
         ip6Header = _config.gnutella_ip6Header
         ip_ver = _config.dht_sending_ipVer
-        targetFunction = DHT_utilities.crawlDHT
-
-
-        # pingQ, writeQ = Gnutella_utilities.initGnutella(_config.gnutella_crawlerHeader, _config.gnutella_ip6Header)
-        # Gnutella_utilities.crawlGnutella(pingQ, writeQ, _config.gnutella_crawlerHeader, _config.gnutella_ip6Header)
-
-
-
-    # elif _config.crawler == "mojito":
-    #     staticHeaderValues = DHT_utilities.get_headerConstants()
-    #     addressQueue = DHT_utilities.initAddrQueue(staticHeaderValues=staticHeaderValues, ip_ver=_config.dht_sending_ipVer)
-    #     writeQueue = Queue(maxsize=_config.dht_write_queue_size)
-    #
-    #     run_event = Event()
-    #     run_event.set()
-    #
-    #     workerThreads = DHT_utilities.get_workerThreads(run_event=run_event, num_threads=_config.dht_num_worker_threads, addrQueue=addressQueue, writeQueue=writeQueue, staticHeaderValues=staticHeaderValues)
-    #     writerThread = DHT_utilities.get_writerThread(writeQueue=writeQueue, run_event=run_event)
-    #     DHT_utilities.runThreads(workerThreads, writerThread, run_event)
 
         # 1) initial requests to populate queue
         # 2) make 3 worker threads that work through queue
@@ -71,71 +49,35 @@ if __name__ == "__main__":
         #hexstr = "6881626040058c8cac3e404a3e739dee85db8acc20210786c34c61ceaeee21deee49cceea1ae8e4c4ca101ce4c9c2a4c2ea1ce0d818c8c66016a0c39e909f56532103324773287f8043b34bb788438034d04000000ffff" #recv .. pong?
         #hexstr = "68811209e9da9610dde5ca78e7d1d6c2a09a7b8c8c8c7c0c0c0ce7c48f7e71de0e64307000b1087645fe62fafb8a1d0828626bf7b5f82f494051e80d85fb3dbeefa7e05594f67a6bc8864e1f2690590c2c38141dd96c3f5b8d338801afa22e477d051509026edab539d2db445804621d070e454eabdc9c799713308947f8ead3fc070414d94c5fc0bc268180a24313f84e64f54c73042953c0a548c74662f94953022605ef08b37fb5460a7f3845ce0bfe2e6f4dc0a4c9f2ce015d7f65f9c12631e250f4f1c2cedd5e6b0998e4a97568f1963a028afacf78b7a6c6125034f5479c9933d73afcbebb39cd6dc396600226e91e9b2ab3783d014533bb121c5d8e68816d13c0a5283f2da0f4403a01939e7cd7cbbe567d8309af49072fd95dbaec4ec0a4175241fc77d62f13013bca0187a2552c953a42eff520e1c48443917647364b641121877764bc5bf38b8022f9cc75ba176e2b32839d844b51f63fff0acd945803bc267de935b9b2ba3d9411afc36d9f47eab23d6286244c5c267595c75ff77d31851192a500000000ffff"
         hexstr = "68815ae0b1d8d2bacdedddea15bc37576cdda4c3c8c8c8c7c0c0b054d375e9c29340060307102fc0aec85f4c7f5fb1030145dc3c7dd7ee5611507464b3fd6c35ce20063060c1a128f486c2fd1edff753f09aa46323b1fca42901eb6ca62f605e93404091e051174d0655028a325d765adf5945405198b3e7178672028a725bd62d3dee454091d32a3767dee504144d96770ee8fa2bcb0f0e4c461c8a22b4d6ad6130032b11c069d20ba920fe3beb9789809539e05094c06e94f4a28f809b766d8ef436111661029bc48143d1cf0a17e374360226796a1d5abca58e8022f9cc75ba176e2b3283dd8d4b91b34feafa4257022665fff3afd04c4931c0ab48bb239b25b28880495f7a4daeac6e0f65040701130e45ab582a7584deeb31e055949f16507a209d8075072fd95dbaec4e40118ff0d5a7f90f08288a9c17fc5dde9a010a70283a25b12179f10c0548fce25234b32bc1d1e5881634d5e150f4a423e3dd9a5f04dcf4e4bb5ef6b5ea1b4c784dfa7861e76eafb5044c72df2271af8f9780effacf78b7a6c6123069ea8f383367ae7510835800000000ffff"  # with ggep + IP/6.0 on both sides
-        extrGGEP = "ffff00000000a5921185317df75fc79575265c4c2486623db2ea479f6dc3af11943dbab2b935e97d26bc035894cd0aff3ff6514b849d83322b6e17ba75ccf922808bf35bbc6477872111644b364776914384c4e120f5ef423a952c55a28701ca3b01132fd677fc415217a4c04eecba5dd92f0749af09837d56becbd77c9e93013a40f4a02d3f28a5c0136d81688e5d1c12bb3345013d78b32a9b1ee926026096c36dcd39bbbefc3ad733999c47f5345012c6a6b778cffa8a023a96f16875a9e498096b5eddcec2f1f450e23126c1f9657f5d01cef2c9a4c04d6f2efe0bce45387f0a46b57fb308ef0526025349f96246c748a5c0532904734cf5644ef81343a2808126bcc05f4cd9140407fcd3eaf84789301397799cdcab4e450e071d62045844dbd239b5da6e020915057d472ea2af0188338d5b3f6cd91d14382c0c5990261f4e86c86b7af69455e0a7efbe3dfb850de85140492ff8b5f76b6228081d8afbfa62fe457608b1"
+        extrGGEP = "c38136502607fb902dcca21ef31aa1ab388b25f4"
 
-        decomp_hexstr, _ = Gnutella_utilities.decompressHexstring(hexstr)
-        packet = Gnutella_GnutellaPacket.GnutellaPacket.fromString(decomp_hexstr)
-        _, ips = Gnutella_utilities.processPong(pongPacket=packet, checkUP=False)
-        print(ips)
+        # decomp_hexstr, _ = Gnutella_utilities.decompressHexstring(hexstr)
+        # packet = Gnutella_GnutellaPacket.GnutellaPacket.fromString(decomp_hexstr)
+        # _, ips = Gnutella_utilities.processPong(pongPacket=packet, checkUP=False)
+        # print(ips)
 
-        # tmp = Gnutella_utilities.Gnutella_GnutellaPacket.GnutellaPacket.fromString(hexstr)
-        # remainder, _ = tmp.processPayload()
-        # while remainder != "":
-        #     tmp = Gnutella_utilities.Gnutella_GnutellaPacket.GnutellaPacket.fromString(remainder)
-        #     remainder, _ = tmp.processPayload()
+        processExtBlock(extrGGEP)
 
-        # byte_values = [int(hexstr[i:i + 2], 16) for i in range(0, len(hexstr), 2)]
-        #
-        # decompressor = zlib.decompressobj()
-        # decompressed_bytestr = b''
-        # hexstr_decomp = ""
-        # try:
-        #     for b in byte_values:
-        #         byte = b.to_bytes(1, "big")
-        #         decompressed_byte = decompressor.decompress(byte)
-        #         decompressed_bytestr += decompressed_byte
-        #         if decompressed_byte != b'':
-        #             hexstr_decomp += decompressed_byte.hex()
-        #             print(decompressed_byte.hex())
-        #     print(decompressed_bytestr.decode())
-        # except Exception as e:
-        #     print(e)
-        # decompressor.flush()
-        # print(hexstr_decomp)
-
-
-
-        # deflate_compress = zlib.compressobj(9, zlib.DEFLATED, -zlib.MAX_WBITS)
-        # deflate_data = deflate_compress.compress(data) + deflate_compress.flush()
-        # data_decompressed = zlib.decompress(deflate_data, -zlib.MAX_WBITS)
-        # print(data_decompressed)
-        # print(data_decompressed.decode())
-        # print(str(data_decompressed.decode()))
         exit(0)
 
-        # text = "Test123"
-        # #compress
-        # deflate_compress = zlib.compressobj(9, zlib.DEFLATED, -zlib.MAX_WBITS)
-        # deflate_data = deflate_compress.compress(text.encode()) + deflate_compress.flush()
-        # print(deflate_data)
-        # #decompress
-        # data = zlib.decompress(deflate_data, -zlib.MAX_WBITS)
-        # print(data)
 
     else:
         print("Unrecognized crawler type, available are <gnutella> and <mojito> (DHT)")
         exit(1)
 
 
+    startT = time.time()
+
     addrQueue = _dependants_.initAddrQueue(addrQSize=addrQSize, ip_ver=ip_ver, staticHeaderValues=staticHeaderValues)
     writeQueues = [Queue(maxsize=writeQSize), Queue(maxsize=writeQSize)]  # [HubsQ, LeavesQ]
     run_event = Event()
     run_event.set()
-    workerThreads = _utilities_.get_workerThreads(target=targetFunction, run_event=run_event, num_threads=numThreads, addrQueue=addrQueue, writeQueues=writeQueues, ip6Header=ip6Header, staticHeaderValues=staticHeaderValues)
+    workerThreads = _utilities_.get_workerThreads(target=_dependants_.crawl, run_event=run_event, num_threads=numThreads, addrQueue=addrQueue, writeQueues=writeQueues, ip6Header=ip6Header, staticHeaderValues=staticHeaderValues)
     writerThreads = _utilities_.get_writerThread(writeQueues=writeQueues, run_event=run_event)
     _utilities_.runThreads(workerThreads, writerThreads, run_event)
 
-
+    finishT = time.time()
+    print(f"\n----------------------------\nCrawl took {(finishT-startT): .1f} seconds.\n----------------------------\n")
 
 
     # '''

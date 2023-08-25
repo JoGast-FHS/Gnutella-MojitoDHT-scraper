@@ -156,9 +156,11 @@ def processExtensionBlock(extBlock):
 
 
 def processPong(pongPacket, checkUP=True):
+    retCode = 3
     ips = []
     ips.append([])  # hubIPs
     ips.append([])  # leafIPs
+    ips.append([])  # undetermined
     if pongPacket.payloadtype == "01" and pongPacket.payloadlen != 0:  # if Pong
         tmp_packet = pongPacket
         while True:
@@ -173,18 +175,16 @@ def processPong(pongPacket, checkUP=True):
                         with open(v4File_hubs_p, 'r+') as f:  # check only if IP is not already in one of the files
                             if ipTuple[0] in f.read():
                                 inUfile = True
-                            f.close()
                         if not inUfile:
                             with open(v4File_leaves_p, 'r+') as f:
                                 if ipTuple[0] in f.read():
                                     inLfile = True
-                                f.close()
                     if inUfile:
                         ultrapeer = 1
-                        print("-> Hub already known-")  # verbose
+                        print("-> Hub already known\n")  # verbose
                     elif inLfile:
                         ultrapeer = 0
-                        print("-> Leaf already known")  # verbose
+                        print("-> Leaf already known\n")  # verbose
                     else:
                         ultrapeer = isUltrapeer(ipTuple)  # ^ see last comment
             except KeyError as e:
@@ -193,12 +193,18 @@ def processPong(pongPacket, checkUP=True):
                 print(f"Exception thrown getting peer status: {e}\n")  # verbose
             if ultrapeer == 1:
                 ips[0].append(ipTuple)
-            else:
+            elif ultrapeer == 0:
                 ips[1].append(ipTuple)  # note: also peers where status is undetermined are added to leaves!
+            else:
+                ips[2].append(ipTuple)
+                retCode = 4  # this was later addition to enable pinging peers of undetermined status, which are likely all hubs
             tmp_packet = Gnutella_GnutellaPacket.GnutellaPacket.fromString(payload_remainder)
             if payload_remainder == "":  # once payload has been fully processed
                 print("\n")
-                return 3, ips
+                if retCode != 4:
+                    return retCode, ips[:2]  # no undetermined
+                else:
+                    return retCode, ips
     else:
         print("Received something other than a Pong - no further processing.")
         return -1, []
@@ -212,10 +218,10 @@ def timedRecv(sock, buf):
 
 
 def ping(sock, target, crawlerHeader=False, ip6Header=False):
-    ret = (-1, [])
+    ret = (-1, [[], []])
     try:
         sock.connect(target)
-        timedRecv_f = timeout(_config.gnutella_socket_timeout - 3)(timedRecv)
+        timedRecv_f = timeout(_config.gnutella_socket_timeout * 0.5)(timedRecv)
         handshakeResp = doHandshake(sock, target, crawlerHeader, ip6Header)
         ret = handshakeResp
         if handshakeResp[0] == 3 and crawlerHeader:
@@ -224,28 +230,24 @@ def ping(sock, target, crawlerHeader=False, ip6Header=False):
                 while True:
                     responseString = timedRecv_f(sock, 1024).decode()
                     stitchedResp = stitchedResp + responseString
-                    #print(f"Peerdata: {peerResp.decode()}\n")  # verbose
+                    # print(f"Peerdata: {peerResp.decode()}\n")  # verbose
             except UserWarning:
-                #print("-recv timeout-")  # verbose
+                # print("-recv timeout-")  # verbose
                 pass
 
-            #foundIPs = []
             hubIPs = []
             leafIPs = []
             gnutellaResponse = Gnutella_ConnectMessage.ConnectMessage(stitchedResp)
-            #print(gnutellaResponse)
             tryIPs = gnutellaResponse.headers['Peers'].replace(' ', '').replace('\r\n', '').split(',')
             for ip in tryIPs:
                 ipTuple = ip.split(':')
                 appendIP = (ipTuple[0], int(ipTuple[1].split(' ')[0]))
                 hubIPs.append(appendIP)
-                #foundIPs.append(appendIP)
             tryIPs = gnutellaResponse.headers['Leaves'].replace(' ', '').replace('\r\n', '').split(',')
             for ip in tryIPs:
                 ipTuple = ip.split(':')
                 appendIP = (ipTuple[0], int(ipTuple[1].split(' ')[0]))
                 leafIPs.append(appendIP)
-                #foundIPs.append(appendIP)
             print(f"Got Hubs: {hubIPs}")
             print(f"Got Leaves: {leafIPs}\n")
             return 3, [hubIPs, leafIPs]
@@ -266,7 +268,7 @@ def ping(sock, target, crawlerHeader=False, ip6Header=False):
                     # print(f"Pong decompressed: {decompressed_hexstring}")  # verbose
                     pongPacket = Gnutella_GnutellaPacket.GnutellaPacket.fromString(decompressed_hexstring)
                     retCode, ips = processPong(pongPacket)
-                    if retCode == 3:
+                    if retCode == 3 or retCode == 4:
                         return retCode, ips
                     else:
                         continue
@@ -290,6 +292,8 @@ def ping(sock, target, crawlerHeader=False, ip6Header=False):
 
 
 def gnutellaPings(target, crawlerHeader=False, ip6Header=False):
+    retCode = -1
+    retIPs = [[], []]
     sock = createGnutellaSocket()
     try:
         sockName = sock.getsockname()[0]
@@ -302,163 +306,170 @@ def gnutellaPings(target, crawlerHeader=False, ip6Header=False):
     return retCode, retIPs
 
 
-def crawlGnutella(run_event, addrQueue, writeQueues, ip6Header=False):
-    crawlerHeader = _config.gnutella_crawlerHeader
-    v4File_hubs_c, v4File_leaves_c, v6File_hubs_c, v6File_leaves_c, v4File_hubs_p, v4File_leaves_p, v6File_hubs_p, v6File_leaves_p = _utilities_.get_Filenames("gnutella")
-    if crawlerHeader:
-        v4File_hubs = v4File_hubs_c
-        v4File_leaves = v4File_leaves_c
-        v6File_hubs = v6File_hubs_c
-        v6File_leaves = v6File_leaves_c
-    else:
-        v4File_hubs = v4File_hubs_p
-        v4File_leaves = v4File_leaves_p
-        v6File_hubs = v6File_hubs_p
-        v6File_leaves = v6File_leaves_p
-    writeQueue_hubs = writeQueues[0]
-    writeQueue_leaves = writeQueues[1]
-
-    emptyTries = 0
-    while run_event.is_set():
-        fromQueue = False
-        if addrQueue.empty():  # fallback to hardcoded addresses
-            emptyTries += 1
-            if emptyTries >= 5:
-                run_event.clear()
-                return
-            if _config.gnutella_sending_ipVer == 4:
-                addrNum = random.randint(0, (len(_targets.gnutella_targets_ipv4) - 1))  # choose random addr from hardcoded ipv4 addr
-                target_addr = _targets.gnutella_targets_ipv4[addrNum]
-                print("Address queue empty - probably all IPv4 addresses in Gnutella networks crawled, using only ultrapeers as seeds or using unreachable seed nodes (-> seed manually)...")
-            else:
-                addrNum = random.randint(0, (len(_targets.gnutella_targets_ipv6) - 1))  # choose random addr from hardcoded ipv6 addr
-                target_addr = _targets.gnutella_targets_ipv6[addrNum]
-                print("Address queue empty - probably no IPv6 addresses scraped or wrong configuration...")
-        else:
-            with _utilities_.queues_lock:
-                target_addr = addrQueue.get()
-                addrQueue.task_done()
-            fromQueue = True
-        with _utilities_.queues_lock:
-            if target_addr == None or target_addr == "" or target_addr == [] or type(target_addr) is not tuple:  # last condition: Weird bug that was encountered rarely would push entire hanshake packet into queue byte by byte
-                print("Error: Failed to initialize target address.\n")  # verbose
-                continue
-            elif target_addr in _utilities_.faultyAddrSet:
-                continue
-            elif target_addr in _utilities_.allAddrSet:
-                continue
-
-        retCode, ips = gnutellaPings(target=target_addr, crawlerHeader=crawlerHeader, ip6Header=ip6Header)
-        # print(f"retCode is {retCode}, type is {type(retCode)}")  # debugging
-        if retCode == 1 or retCode == 3:
-            # print("Inside 'IF' (1 or 3)\n")  # debugging
-            hubsAddrv4 = ips[0]  # Hubs / Ultrapeers
-            leavesAddrv4 = ips[1]  # Leaves
-        # elif retCode == -1:
-        #     # print("Inside 'ELIF' (-1)\n")  # debugging
-        #     with _utilities_.queues_lock:
-        #         if target_addr not in _utilities_.faultyAddrSet:
-        #             _utilities_.faultyAddrSet.add(target_addr)
-        #             hubsAddrv4 = [target_addr]
-        #             leavesAddrv4 = []
-        #         else:
-        #             continue
-        else:
-            # print("Inside 'ELSE'\n")  # debugging
-            if retCode != -1:
-                print(f"Error while pinging {target_addr}: {retCode}\n")  # verbose
-            with _utilities_.queues_lock:
-                if target_addr not in _utilities_.faultyAddrSet:
-                    _utilities_.faultyAddrSet.add(target_addr)
-                    hubsAddrv4 = [target_addr]
-                    leavesAddrv4 = []
-                else:
-                    continue
-        hubsAddrv6 = []  # temp fix while addresses are not split into ipv4 and ipv6 files
-        leavesAddrv6 = []
-        try:
-            # writeQueue_hubs.join()  # wait until all addresses in the writeQueue are processed to avoid duplicate writes... Seems buggy though, so checking again in writeToFile()
-            # writeQueue_leaves.join()
-            with _utilities_.queues_lock:
-                with open(v4File_hubs, 'r+') as f:
-                    for addrTuple in hubsAddrv4:
-                        if type(addrTuple) is not tuple:
-                            continue
-                        elif addrTuple in _utilities_.allAddrSet or addrTuple in addrQueue.queue:  # !! direct queue access possibly not thread safe... may require further testing
-                            continue
-                        # elif addrTuple[0] in f.read():  # not used for now because we want to catch hubs on all open ports
-                        #     continue
-                        elif _config.gnutella_sending_ipVer == 4:
-                            if addrQueue.qsize() < _config.gnutella_addr_queue_size:
-                                addrQueue.put(addrTuple)
-                        if ('ipv4', addrTuple) in writeQueue_leaves.queue or ('ipv4', addrTuple) in writeQueue_hubs.queue:
-                            continue
-                        elif writeQueue_hubs.qsize() < _config.gnutella_write_queue_size:
-                            writeQueue_hubs.put(('ipv4', addrTuple))
-                        else:
-                            print("!! Write Queue full! Omitting IPv4-Addresses! !!")
-                with open(v4File_leaves, 'r+') as f:
-                    for addrTuple in leavesAddrv4:
-                        if type(addrTuple) is not tuple:
-                            continue
-                        elif addrTuple in _utilities_.allAddrSet or addrTuple in addrQueue.queue or (
-                                'ipv4', addrTuple) in writeQueue_leaves.queue or (
-                                'ipv4', addrTuple) in writeQueue_hubs.queue:
-                            continue
-                        # elif addrTuple[0] in f.read():
-                        #     continue
-                        elif writeQueue_leaves.qsize() < _config.gnutella_write_queue_size:
-                            writeQueue_leaves.put(('ipv4', addrTuple))
-                        else:
-                            print("!! Write Queue full! Omitting IPv4-Addresses! !!")
-                with open(v6File_hubs, 'r+') as f:
-                    for addrTuple in hubsAddrv6:
-                        if type(addrTuple) is not tuple:
-                            continue
-                        elif addrTuple in _utilities_.allAddrSet or addrTuple in addrQueue.queue:
-                            continue
-                        # elif addrTuple[0] in f.read():
-                        #     continue
-                        elif _config.gnutella_sending_ipVer == 6:
-                            if addrQueue.qsize() < _config.gnutella_addr_queue_size:
-                                addrQueue.put(addrTuple)
-                                # print("Put in addrQueue")  # verbose
-                        if ('ipv6', addrTuple) in writeQueue_leaves.queue or ('ipv6', addrTuple) in writeQueue_hubs.queue:
-                            continue
-                        elif writeQueue_hubs.qsize() < _config.gnutella_write_queue_size:
-                            writeQueue_hubs.put(('ipv6', addrTuple))
-                            # print("Put in writeQueue")  # verbose
-                        else:
-                            print("!! Write Queue full! Omitting IPv6-Addresses! !!")
-                with open(v6File_leaves, 'r+') as f:
-                    for addrTuple in leavesAddrv6:
-                        if type(addrTuple) is not tuple:
-                            continue
-                        elif addrTuple in _utilities_.allAddrSet or addrTuple in addrQueue.queue or (
-                                'ipv6', addrTuple) in writeQueue_leaves.queue or (
-                                'ipv6', addrTuple) in writeQueue_hubs.queue:
-                            continue
-                        # elif addrTuple[0] in f.read():
-                        #     continue
-                        elif writeQueue_leaves.qsize() < _config.gnutella_write_queue_size:
-                            writeQueue_leaves.put(('ipv6', addrTuple))
-                        else:
-                            print("!! Write Queue full! Omitting IPv6-Addresses! !!")
-        except Exception as e:
-            print(f"Error while writing to file: {e}\n")
+# def crawl(run_event, addrQueue, writeQueues, staticHeaderValues, ip6Header=False):
+#     if _config.crawler == "gnutella":
+#         crawlerHeader = _config.gnutella_crawlerHeader
+#         # v4File_hubs_c, v4File_leaves_c, v6File_hubs_c, v6File_leaves_c, v4File_hubs_p, v4File_leaves_p, v6File_hubs_p, v6File_leaves_p = _utilities_.get_Filenames("gnutella")
+#         # if crawlerHeader:
+#         #     v4File_hubs = v4File_hubs_c
+#         #     v4File_leaves = v4File_leaves_c
+#         #     v6File_hubs = v6File_hubs_c
+#         #     v6File_leaves = v6File_leaves_c
+#         # else:
+#         #     v4File_hubs = v4File_hubs_p
+#         #     v4File_leaves = v4File_leaves_p
+#         #     v6File_hubs = v6File_hubs_p
+#         #     v6File_leaves = v6File_leaves_p
+#         writeQueue_hubs = writeQueues[0]
+#         writeQueue_leaves = writeQueues[1]
+#         crawler_addrQSize = _config.gnutella_addr_queue_size
+#         crawler_writeQSize = _config.gnutella_write_queue_size
+#     elif _config.crawler == "mojito":
+#         # v4File_hubs, v6File_hubs = _utilities_.get_Filenames("mojito")
+#         # v4File_leaves = v4File_hubs
+#         # v6File_leaves = v6File_hubs
+#         writeQueue_hubs = writeQueues[0]  # only one type of peer in this mode
+#         writeQueue_leaves = writeQueues[0]
+#         crawler_addrQSize = _config.dht_addr_queue_size
+#         crawler_writeQSize = _config.dht_write_queue_size
+#     else:
+#         return
+#
+#     emptyTries = 0
+#     while run_event.is_set():
+#         if addrQueue.empty():  # fallback to hardcoded addresses
+#             emptyTries += 1
+#             if emptyTries >= 5:
+#                 run_event.clear()
+#                 return
+#             if _config.crawler == "gnutella":
+#                 if _config.gnutella_sending_ipVer == 4:
+#                     addrNum = random.randint(0, (len(_targets.gnutella_targets_ipv4) - 1))  # choose random addr from hardcoded ipv4 addr
+#                     target_addr = _targets.gnutella_targets_ipv4[addrNum]
+#                     print("Address queue empty - probably all IPv4 addresses in Gnutella networks crawled, using only ultrapeers as seeds or using unreachable seed nodes (-> seed manually)...")
+#                 else:
+#                     addrNum = random.randint(0, (len(_targets.gnutella_targets_ipv6) - 1))  # choose random addr from hardcoded ipv6 addr
+#                     target_addr = _targets.gnutella_targets_ipv6[addrNum]
+#                     print("Address queue empty - probably no IPv6 addresses scraped or wrong configuration...")
+#             elif _config.crawler == "mojito":
+#                 if _config.dht_sending_ipVer == 4:
+#                     addrNum = random.randint(0, (len(_targets.dht_targets_ipv4) - 1))  # choose random addr from hardcoded ipv4 addr
+#                     target_addr = _targets.dht_targets_ipv4[addrNum]
+#                     print("Address queue empty - probably all IPv4 addresses in DHT scraped or using unreachable seed "
+#                           "nodes (-> seed manually)...")
+#                 else:
+#                     addrNum = random.randint(0, (len(_targets.dht_targets_ipv6) - 1))  # choose random addr from hardcoded ipv6 addr
+#                     target_addr = _targets.dht_targets_ipv6[addrNum]
+#                     print("Address queue empty - probably no IPv6 addresses scraped or wrong configuration...")
+#             else:
+#                 return
+#         else:
+#             with _utilities_.queues_lock:
+#                 target_addr = addrQueue.get()
+#                 addrQueue.task_done()
+#         with _utilities_.queues_lock:
+#             if target_addr == None or target_addr == "" or target_addr == [] or type(target_addr) is not tuple:  # last condition: Weird bug that was encountered rarely would push entire hanshake packet into queue byte by byte
+#                 print("Error: Failed to initialize target address.\n")  # verbose
+#                 continue
+#             elif target_addr in _utilities_.faultyAddrSet:
+#                 continue
+#             elif target_addr in _utilities_.allAddrSet:
+#                 continue
+#
+#         if _config.crawler == "gnutella":
+#             retCode, ips = gnutellaPings(target=target_addr, crawlerHeader=crawlerHeader, ip6Header=ip6Header)
+#             # print(f"retCode is {retCode}, type is {type(retCode)}")  # debugging
+#             if retCode == 1 or retCode == 3:
+#                 # print("Inside 'IF' (1 or 3)\n")  # debugging
+#                 hubsAddrv4 = ips[0]  # Hubs / Ultrapeers
+#                 leavesAddrv4 = ips[1]  # Leaves
+#             else:
+#                 # print("Inside 'ELSE'\n")  # debugging
+#                 if retCode != -1:
+#                     print(f"Error while pinging {target_addr}: {retCode}\n")  # verbose
+#                 with _utilities_.queues_lock:
+#                     if target_addr not in _utilities_.faultyAddrSet:
+#                         _utilities_.faultyAddrSet.add(target_addr)
+#                         hubsAddrv4 = [target_addr]
+#                         leavesAddrv4 = []
+#                     else:
+#                         continue
+#             hubsAddrv6 = []  # temp fix while addresses are not split into ipv4 and ipv6 files
+#             leavesAddrv6 = []
+#         elif _config.crawler == "mojito":
+#             hubsAddrv4, hubsAddrv6 = findNode_Requests(staticHeaderValues=staticHeaderValues, target=target_addr, numRequests=_config.dht_num_requests)
+#             leavesAddrv4 = []
+#             leavesAddrv6 = []
+#         else:
+#             return
+#
+#
+#         try:
+#             # writeQueue_hubs.join()  # wait until all addresses in the writeQueue are processed to avoid duplicate writes... Seems buggy though, so checking again in writeToFile()
+#             # writeQueue_leaves.join()
+#             with _utilities_.queues_lock:
+#                 for addrTuple in hubsAddrv4:
+#                     if type(addrTuple) is not tuple:
+#                         continue
+#                     elif addrTuple in _utilities_.allAddrSet or addrTuple in addrQueue.queue:  # !! direct queue access possibly not thread safe... may require further testing
+#                         continue
+#                     # elif addrTuple[0] in f.read():  # not used for now because we want to catch hubs on all open ports
+#                     #     continue
+#                     elif _config.gnutella_sending_ipVer == 4:
+#                         if addrQueue.qsize() < crawler_addrQSize:
+#                             addrQueue.put(addrTuple)
+#                     if ('ipv4', addrTuple) in writeQueue_leaves.queue or ('ipv4', addrTuple) in writeQueue_hubs.queue:
+#                         continue
+#                     elif writeQueue_hubs.qsize() < crawler_writeQSize:
+#                         writeQueue_hubs.put(('ipv4', addrTuple))
+#                     else:
+#                         print("!! Write Queue full! Omitting IPv4-Addresses! !!")
+#
+#                 for addrTuple in leavesAddrv4:
+#                     if type(addrTuple) is not tuple:
+#                         continue
+#                     elif addrTuple in _utilities_.allAddrSet or addrTuple in addrQueue.queue or any(('ipv4', addrTuple) in q for q in writeQueues):
+#                         continue
+#                     # elif addrTuple[0] in f.read():
+#                     #     continue
+#                     elif writeQueue_leaves.qsize() < crawler_writeQSize:
+#                         writeQueue_leaves.put(('ipv4', addrTuple))
+#                     else:
+#                         print("!! Write Queue full! Omitting IPv4-Addresses! !!")
+#
+#                 for addrTuple in hubsAddrv6:
+#                     if type(addrTuple) is not tuple:
+#                         continue
+#                     elif addrTuple in _utilities_.allAddrSet or addrTuple in addrQueue.queue:
+#                         continue
+#                     # elif addrTuple[0] in f.read():
+#                     #     continue
+#                     elif _config.gnutella_sending_ipVer == 6:
+#                         if addrQueue.qsize() < crawler_addrQSize:
+#                             addrQueue.put(addrTuple)
+#                             # print("Put in addrQueue")  # verbose
+#                     if any(('ipv6', addrTuple) in q for q in writeQueues):
+#                         continue
+#                     elif writeQueue_hubs.qsize() < crawler_writeQSize:
+#                         writeQueue_hubs.put(('ipv6', addrTuple))
+#                         # print("Put in writeQueue")  # verbose
+#                     else:
+#                         print("!! Write Queue full! Omitting IPv6-Addresses! !!")
+#
+#                 for addrTuple in leavesAddrv6:
+#                     if type(addrTuple) is not tuple:
+#                         continue
+#                     elif addrTuple in _utilities_.allAddrSet or addrTuple in addrQueue.queue or any(('ipv6', addrTuple) in q for q in writeQueues):
+#                         continue
+#                     # elif addrTuple[0] in f.read():
+#                     #     continue
+#                     elif writeQueue_leaves.qsize() < crawler_writeQSize:
+#                         writeQueue_leaves.put(('ipv6', addrTuple))
+#                     else:
+#                         print("!! Write Queue full! Omitting IPv6-Addresses! !!")
+#         except Exception as e:
+#             print(f"Error while writing to file: {e}\n")
 
         # if fromQueue:
         #     addrQueue.task_done()
-
-
-# def get_workerThreads(staticHeaderValues, run_event, num_threads, addrQueue, writeQueue):
-#     workers = []
-#     for i in range(num_threads):
-#         args = {'staticHeaderValues': staticHeaderValues, 'run_event': run_event, 'addrQueue': addrQueue,
-#                 'writeQueue': writeQueue}
-#         worker = Thread(target=crawlDHT, kwargs=args)
-#         worker.daemon = True
-#         workers.append(worker)
-#     return workers
-
 

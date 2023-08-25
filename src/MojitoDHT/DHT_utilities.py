@@ -162,54 +162,54 @@ def findNode_Requests(staticHeaderValues, target, numRequests):
 #     return queue
 #
 
-def crawlDHT(staticHeaderValues, run_event, addrQueue, writeQueues):
-    v4File, v6File = _utilities_.get_Filenames("mojito")
-    writeQueue = writeQueues[0]  # only one type of peer in this mode
-
-    while run_event.is_set():
-        fromQueue = False
-        if addrQueue.empty():  # fallback to hardcoded addresses
-            if _config.dht_sending_ipVer == 4:
-                addrNum = random.randint(0, (len(_targets.dht_targets_ipv4) - 1))  # choose random addr from hardcoded ipv4 addr
-                target_addr = _targets.dht_targets_ipv4[addrNum]
-                print("Address queue empty - probably all IPv4 addresses in DHT scraped or using unreachable seed "
-                      "nodes (-> seed manually)...")
-            else:
-                addrNum = random.randint(0, (len(_targets.dht_targets_ipv6) - 1))  # choose random addr from hardcoded ipv6 addr
-                target_addr = _targets.dht_targets_ipv6[addrNum]
-                print("Address queue empty - probably no IPv6 addresses scraped or wrong configuration...")
-        else:
-            target_addr = addrQueue.get()
-            fromQueue = True
-
-        recvAddrv4, recvAddrv6 = findNode_Requests(staticHeaderValues=staticHeaderValues, target=target_addr, numRequests=_config.dht_num_requests)
-        writeQueue.join()  # wait until all addresses in the writeQueue are processed to avoid duplicate writes... Seems buggy though, so checking again in writeToFile()
-        with open(v4File, 'r+') as f:
-            for addrTuple in recvAddrv4:
-                if addrTuple[0] in f.read():
-                    break
-                if _config.dht_sending_ipVer == 4:
-                    if addrQueue.qsize() < _config.dht_addr_queue_size:
-                        addrQueue.put(addrTuple)
-                if writeQueue.qsize() < _config.dht_addr_queue_size:
-                    writeQueue.put(('ipv4', addrTuple[0]))
-                else:
-                    print("Write Queue full! Omitting IPv4-Addresses!!!")
-        with open(v6File, 'r+') as f:
-            for addrTuple in recvAddrv6:
-                if addrTuple[0] in f.read():
-                    break
-                if _config.dht_sending_ipVer == 6:
-                    if addrQueue.qsize() < _config.dht_addr_queue_size:
-                        addrQueue.put(addrTuple)
-                        #print("Put in addrQueue")  # verbose
-                if writeQueue.qsize() < _config.dht_write_queue_size:
-                    writeQueue.put(('ipv6', addrTuple[0]))
-                    #print("Put in writeQueue")  # verbose
-                else:
-                    print("Write Queue full! Omitting IPv6-Addresses!!!")
-        if fromQueue:
-            addrQueue.task_done()
+# def crawlDHT(staticHeaderValues, run_event, addrQueue, writeQueues, ip6Header=False):
+#     v4File, v6File = _utilities_.get_Filenames("mojito")
+#     writeQueue = writeQueues[0]  # only one type of peer in this mode
+#
+#     while run_event.is_set():
+#         fromQueue = False
+#         if addrQueue.empty():  # fallback to hardcoded addresses
+#             if _config.dht_sending_ipVer == 4:
+#                 addrNum = random.randint(0, (len(_targets.dht_targets_ipv4) - 1))  # choose random addr from hardcoded ipv4 addr
+#                 target_addr = _targets.dht_targets_ipv4[addrNum]
+#                 print("Address queue empty - probably all IPv4 addresses in DHT scraped or using unreachable seed "
+#                       "nodes (-> seed manually)...")
+#             else:
+#                 addrNum = random.randint(0, (len(_targets.dht_targets_ipv6) - 1))  # choose random addr from hardcoded ipv6 addr
+#                 target_addr = _targets.dht_targets_ipv6[addrNum]
+#                 print("Address queue empty - probably no IPv6 addresses scraped or wrong configuration...")
+#         else:
+#             target_addr = addrQueue.get()
+#             fromQueue = True
+#
+#         recvAddrv4, recvAddrv6 = findNode_Requests(staticHeaderValues=staticHeaderValues, target=target_addr, numRequests=_config.dht_num_requests)
+#         writeQueue.join()  # wait until all addresses in the writeQueue are processed to avoid duplicate writes... Seems buggy though, so checking again in writeToFile()
+#         with open(v4File, 'r+') as f:
+#             for addrTuple in recvAddrv4:
+#                 if addrTuple[0] in f.read():
+#                     break
+#                 if _config.dht_sending_ipVer == 4:
+#                     if addrQueue.qsize() < _config.dht_addr_queue_size:
+#                         addrQueue.put(addrTuple)
+#                 if writeQueue.qsize() < _config.dht_addr_queue_size:
+#                     writeQueue.put(('ipv4', addrTuple[0]))
+#                 else:
+#                     print("Write Queue full! Omitting IPv4-Addresses!!!")
+#         with open(v6File, 'r+') as f:
+#             for addrTuple in recvAddrv6:
+#                 if addrTuple[0] in f.read():
+#                     break
+#                 if _config.dht_sending_ipVer == 6:
+#                     if addrQueue.qsize() < _config.dht_addr_queue_size:
+#                         addrQueue.put(addrTuple)
+#                         #print("Put in addrQueue")  # verbose
+#                 if writeQueue.qsize() < _config.dht_write_queue_size:
+#                     writeQueue.put(('ipv6', addrTuple[0]))
+#                     #print("Put in writeQueue")  # verbose
+#                 else:
+#                     print("Write Queue full! Omitting IPv6-Addresses!!!")
+#         if fromQueue:
+#             addrQueue.task_done()
 
 
 # def get_workerThreads(staticHeaderValues, run_event, num_threads, addrQueue, writeQueue):

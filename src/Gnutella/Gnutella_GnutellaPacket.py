@@ -1,7 +1,7 @@
 import secrets
 from config import _config
 from src._general_._utilities_ import replaceStr, hex2ip, swap_byteorder
-
+from src.Gnutella.Gnutella_PacketUtilities import processExtBlock
 
 class GnutellaPacket:
     def toHex(self):
@@ -28,6 +28,7 @@ class GnutellaPacket:
         print(f"Pong returned tuple ({ip_addr}, {port})")
         if ext_block != "":
             print(f"Extension Block: {ext_block}")
+            processExtBlock(ext_block)
         return remainder, (ip_addr, port)
 
     @classmethod
