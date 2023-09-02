@@ -36,3 +36,6 @@ The 'Ping' approach, on the other hand, utilizes G1 binary messages (Crawler Pin
 - gnutella sending ipVer = 4
 
 For both approaches, the _targets.py file needs to be updated with some reachable nodes. These can be obtained by looking at the connections a servent like GTK-Gnutella establishes, or by directly consulting a GWebCache like "Bazooka!".
+
+
+For further information, the Master Thesis itself may prove useful.
